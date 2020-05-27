@@ -1,0 +1,278 @@
+---
+title: "Introduction to NIMBLE"
+author: "Perry de Valpine"
+date: "June 2020"
+output:
+  slidy_presentation: default
+  beamer_presentation: default
+---
+<style>
+slides > slide {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      cache = TRUE)
+has_ggplot2 <- require(ggplot2)
+has_mcmcplots <- require(mcmcplots)
+has_coda <- require(coda)
+generate_original_results <- TRUE
+```
+
+# What Is NIMBLE?
+
+- A framework for hierarchical statistical models and methods.
+- A nearly drop-in alternative to WinBUGS, OpenBUGS and JAGS.
+- An extension of the BUGS language for writing new functions and distributions.
+- A configurable system for MCMC.
+- A library of other methods.
+- A model-generic programming system to write new analysis methods.
+- Numerical Inference for statistical Models using Bayesian and Likelihood Estimation.
+
+# First example: A generalized linear mixed model (GLMM)
+
+* There are plenty of specialized GLMM packages.
+* We start with a GLMM because it will be familiar to many of you.
+* This example is from Zuur et al.
+* E. cervi is a parasite of deer.  On each of 24 farms in Spain, multiple deer were sampled for E. cervi. 
+* 826 total deer.
+* Sex (M/F) and (centered) body Length are explanatory variables (fixed effects).
+* Farm is a random effect.
+* Response variable is presence (1) or absence (0) of the parasite E. cervi.
+
+# GLMM example: Load the package
+```{r}
+library(nimble)
+```
+
+# GLMM example: Load data
+
+```{r}
+DeerEcervi <- read.table('DeerEcervi.txt', header = TRUE)
+summary(DeerEcervi)
+
+## Create presence/absence data from counts.
+DeerEcervi$Ecervi.01 <- DeerEcervi$Ecervi
+DeerEcervi$Ecervi.01[DeerEcervi$Ecervi>0] <- 1
+## Center Length for better interpretation
+DeerEcervi$cLength <- DeerEcervi$Length - mean(DeerEcervi$Length)
+## Make a factor version of Sex for plotting
+DeerEcervi$fSex <- factor(DeerEcervi$Sex)
+## Make a factor and id version of Farm
+DeerEcervi$fFarm <- factor(DeerEcervi$Farm)
+DeerEcervi$farm.ids <- as.numeric(DeerEcervi$fFarm)
+```
+
+# GLMM example: Look at data
+
+```{r eval=has_ggplot2}
+ggplot(data = DeerEcervi, 
+        mapping = aes(x = cLength, y = Ecervi.01, color = fSex)) + 
+  geom_point() + 
+  geom_jitter(width = 0, height = 0.1) + 
+  facet_wrap(~Farm)
+```
+
+# GLMM example: Write the model code **in R**
+
+```{r}
+DEcode1 <- nimbleCode({
+  for(i in 1:2) {
+    # Priors for ntercepts and length coefficients for sex = 1,2
+    sex.effect[i] ~ dnorm(0, sd = 1000)
+    length.effect[i] ~ dnorm(0, sd = 1000)
+  }
+  
+  # Priors for farm random effects and their standard deviation.
+  farm.sd ~ dunif(0, 20)
+  for(i in 1:num.farms) {
+    farm.effect[i] ~ dnorm(0, sd = farm.sd)
+  }
+  
+  # logit link and Bernoulli data probabilities
+  for(i in 1:num.animals) {
+    logit(disease.probability[i]) <- 
+      sex.effect[ sex[i] ] +
+      length.effect[ sex[i] ]*cLength[i] +
+      farm.effect[ farm.ids[i] ]
+    Ecervi.01[i] ~ dbern(disease.probability[i])
+  }
+})
+```
+
+GLMM Example: Steps to use NIMBLE:
+===============
+
+1. Build the model.  It is an R object.
+2. Build the MCMC.
+
+    - 2a. Configure the MCMC.
+    - 2b. Customize the MCMC.
+    - 2c. Build the MCMC.
+
+3. Compile the model and MCMC.
+4. Run the MCMC.
+5. Extract the samples.
+
+- `nimbleMCMC` does all of this at once.
+- Steps 2a-2c can be combined if no customization is needed.
+- `runMCMC` does steps 4-5
+
+    - manages burn-in, multiple chains, and extracting samples.
+    
+GLMM Example: 1. Build the model
+=====
+
+```{r}
+DEconstants <- list(num.farms = 24,
+                    num.animals = 826,
+                    cLength = DeerEcervi$cLength,
+                    sex = DeerEcervi$Sex,
+                    farm.ids = DeerEcervi$farm.ids)
+
+DEmodel1 <- nimbleModel(DEcode1,
+                        constants = DEconstants)
+```
+
+GLMM Example: 1b. Set data and inits
+=====
+
+These can be provided to `nimbleModel` or now:
+```{r}
+DEmodel1$setData(list(Ecervi.01 = DeerEcervi$Ecervi.01))
+# This sets the values and *flags the nodes as data*.
+DEinits1 <- function() {
+  list(sex.effect = c(0, 0), 
+       length.effect = c(0, 0),
+       farm.sd = 1,
+       farm.effect = rnorm(24, 0, 1) )       
+}
+set.seed(123)
+DEmodel1$setInits(DEinits1())
+```
+
+GLMM Example: 2. Build the MCMC
+=====
+```{r}
+DEmcmc1 <- buildMCMC(DEmodel1)
+```
+
+GLMM Example: 3. Compile the model and MCMC.
+=====
+
+This can be done in one step or two.  We'll use two.
+
+```{r}
+cDEmodel1 <- compileNimble(DEmodel1) 
+# First call to compileNimble in a session is slower than later calls.
+cDEmcmc1 <- compileNimble(DEmcmc1, project = DEmodel1)
+```
+
+GLMM Example: 4. Run the MCMC
+=====
+```{r}
+cDEmcmc1$run(10000)
+```
+
+GLMM Example: 5. Extract the samples
+=====
+```{r}
+samples <- as.matrix(cDEmcmc1$mvSamples)
+```
+
+GLMM Example: Look at results:
+=====
+
+There are many packages for summarizing and plotting MCMC samples.  NIMBLE does not try to re-invent these wheels.
+
+1. `mcmcplots`
+
+```{r eval=(has_mcmcplots & !generate_original_results)}
+library(mcmcplots)
+mcmcplot(samples, dir = ".", filename = "Ecervi_samples_mcmcplot")
+```
+
+```{r echo=FALSE, eval=generate_original_results}
+library(mcmcplots)
+mcmcplot(samples, dir = ".", filename = "orig_Ecervi_samples_mcmcplot")
+```
+
+Results that comes with these slides are [here](orig_Ecervi_samples_mcmcplot.html).
+
+Results if you generated your own will be [here](Ecervi_samples_mcmcplot.html).
+
+2. `coda`
+
+```{r eval = (has_coda & !generate_original_results)}
+library(coda)
+pdf("Ecervi_samples_coda.pdf")
+plot(as.mcmc(samples))
+dev.off()
+```
+
+```{r echo = FALSE, eval = generate_original_results}
+library(coda)
+pdf("orig_Ecervi_samples_coda.pdf")
+plot(as.mcmc(samples))
+dev.off()
+```
+
+Results that comes with these slides are [here](orig_Ecervi_samples_coda.pdf).
+
+Results if you generated your own will be [here](Ecervi_samples_coda.pdf).
+
+MCMC workflow in NIMBLE
+=====
+
+Here is a summary of the MCMC workflow in NIMBLE.
+
+[nimbleWorkflow.pdf](nimbleWorkflow.pdf)
+
+GLMM Example: Doing it all at once with `nimbleMCMC`
+=====
+
+Start from:
+
+- code
+- constants + data
+- inits
+
+```{r}
+set.seed(123)
+DEdataAndConstants <- c(DEconstants, 
+                        list(Ecervi.01 = DeerEcervi$Ecervi.01))
+samples2 <- nimbleMCMC(DEcode1,
+                       constants = DEdataAndConstants,
+                       inits = DEinits1,
+                       niter = 10000,
+                       nburnin = 1000,
+                       nchains = 2,
+                       samplesAsCodaMCMC = TRUE)
+summary(samples2) ## from coda
+```
+
+GLMM Example: Managing the run with `runMCMC`
+=====
+
+Start from:
+
+- Compiled MCMC
+
+```{r}
+samples3 <- runMCMC(cDEmcmc1, 
+                    niter = 10000,
+                    nburnin = 1000,
+                    nchains = 2,
+                    samplesAsCodaMCMC = TRUE)
+summary(samples3)
+```
+
+Other notes
+=====
+
+- `readBUGSmodel` will read BUGS/JAGS model code and variables from their standard file formats.
+
