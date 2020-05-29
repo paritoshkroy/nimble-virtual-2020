@@ -1,0 +1,177 @@
+---
+title: "Writing new MCMC samplers (or other nimbleFunctions)"
+author: "Perry de Valpine"
+date: "June 2020"
+output:
+  slidy_presentation: default
+  beamer_presentation: default
+---
+<style>
+slides > slide {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(nimble)
+```
+
+Agenda
+=====
+
+
+Load Deer E. cervi example
+=====
+```{r load-DeerEcervi}
+source(file.path("..", "examples", "DeerEcervi", "load_DeerEcervi.R"), 
+       chdir = TRUE)
+set.seed(123)
+DEmodel1 <- nimbleModel(DEcode1,
+                        constants = DEconstants,
+                        data = list(Ecervi.01 = DeerEcervi$Ecervi.01),
+                        inits = DEinits1())
+```
+
+
+Design of `nimble`'s MCMC system
+=====
+
+1. MCMC configuration object: Contains a list of sampler assignments, not actual samplers.
+2. MCMC object: Contains a list of sampler objects.
+
+Look at MCMC configuration object for just a few nodes
+```{r}
+mcmcConf <- configureMCMC(DEmodel1, nodes = 'farm.effect[1:3]')
+class(mcmcConf)
+ls(mcmcConf)
+fe1_sampler <- mcmcConf$getSamplers("farm.effect[1]")[[1]]
+class(fe1_sampler)
+ls(fe1_sampler)
+fe1_sampler$target
+fe1_sampler$control
+```
+
+
+Two-stage evaluation in nimbleFunctions
+=====
+Say we want a nimbleFunction to calculate some nodes and their dependencies.
+
+```{r}
+calcDepsNF <- nimbleFunction(
+  setup = function(model, nodes) {
+    calcNodes <- model$getDependencies(nodes)
+  },
+  run = function() {
+    ans <- model$calculate(calcNodes)
+    return(ans)
+    returnType(double())
+  }
+)
+```
+
+Two-stage evaluation in nimbleFunctions
+=====
+```{r}
+calcDeps_farm1 <- calcDepsNF(DEmodel1, 'farm.effect[1]') ## first stage: setup code
+calcDeps_farm1$run()
+```
+
+### Go to R to demonstrate uncompiled browsing/debugging.
+
+More about nimbleFunctions
+=====
+
+- Without setup code, a `nimbleFunction` becomes an R function and a C++ function.
+- With setup code, a `nimbleFunction` becomes an R reference class definition and a C++ class definition.
+
+### nimbleFunction class definitions (i.e with setup code)
+
+- `setup` is always run in R.
+    - Typically one-time, high-level processing such as querying model structure.
+- `run` and other methods can be run uncompiled (in R) or compiled (via C++).
+    - Typically repeated "actual algorithm" calculations such as MCMC sampler updates.
+- Any objects (e.g. `calcNodes` and `model`) in `setup` can be used in `run`.
+    - Internally, these are automatically set up as class member data.
+
+Step through setup and run code in uncompiled execution
+=====
+```{r eval}
+calcDepsNF <- nimbleFunction(
+  setup = function(model, nodes) {
+    browser()
+    calcNodes <- model$getDependencies(nodes)
+  },
+  run = function() {
+    browser()
+    ans <- model$calculate(calcNodes)
+    return(ans)
+    returnType(double())
+  }
+)
+```
+
+```{r eval=FALSE}
+calcDeps_farm1 <- calcDepsNF(DEmodel1, 'farm.effect[1]') ## first stage: setup code
+calcDeps_farm1$run()
+```
+
+A basic Random-Walk Metropolis-Hastings sampler
+=====
+```{r}
+ourMH <- nimbleFunction(
+  name = 'ourMH',
+  contains = sampler_BASE,
+  setup = function(model, mvSaved, target, control) {
+    scale <- if(!is.null(control$scale)) control$scale else 1
+    calcNodes <- model$getDependencies(target)
+  },
+  run = function() {
+    currentValue <- model[[target]]
+    currentLogProb <- model$getLogProb(calcNodes)
+    proposalValue <- rnorm(1, mean = currentValue, sd = scale)
+    model[[target]] <<- propValue
+    proposalLogProb <- model$calculate(calcNodes)
+    logAcceptanceRatio <- currentLogProb - proposalLogProb
+    accept <- decide(logMHR)
+    if(accept)
+      copy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+    else     
+      copy(from = mvSaved, to = model, row = 1, nodes = calcNodes, logProb = TRUE)
+  },
+  methods = list(
+    reset = function() {}
+  )
+)
+```
+
+Rules for each sampler
+=====
+
+### setup function
+  
+- The four arguments, named exactly as shown, are required.  This allows `buildMCMC` to create any sampler correctly.
+
+### run function
+
+- The `mvSaved` ("modelValues saved") has a saved copy of all model variables and log probabilities
+- Upon entry, `run()` can assume:
+    - the model is fully calculated (so `getLogProb` and `calculateDiff` make sense).
+    - `mvSaved` and the model are synchronized (have the same values).
+- Upon exit, `run()` must ensure those conditions are met.
+    - That way the next sampler can operator correctly.
+- Between entry and exit, `run()` can manipulate the model in any way necessary.
+
+### reset function
+
+- To match the `sampler_BASE` definition, all samplers must have a `reset()` function.
+
+Introduction to `modelValues`
+=====
+
+- 
+
+Stepping through uncompiled execution
+=====
+
