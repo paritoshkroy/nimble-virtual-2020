@@ -1,0 +1,101 @@
+<h1>nimble-virtual-2020</h1>
+
+<p>Materials for the virtual NIMBLE workshop, June 3-5 2020.</p>
+
+<p>To prepare for the workshop:</p>
+
+<ul>
+<li>Install NIMBLE (see below)</li>
+<li>Install additional packages (see below and check back for updates)</li>
+<li>Download these materials [UNDER CONSTRUCTION]</li>
+</ul>
+
+<p>All materials for the workshop are here [UNDER CONSTRUCTION]. If you're familiar with Git/Github, you already know how to get all the materials on your computer. If you're not, simply click <a href="https://github.com/nimble-training/nimble-virtual-2020/archive/master.zip">here</a>.</p>
+
+<p>There is some overview information <a href="https://htmlpreview.github.io/?https://github.com/nimble-training/nimble-virtual-2020/blob/master/overview_slides.html">here</a>.</p>
+
+<p>Location: Zoom (URL TBD)
+Time: 9 am - 2 pm California time (noon - 5 pm EDT)</p>
+
+<h2>Approximate schedule</h2>
+
+<p>Day 1 (Wednesday):</p>
+
+<ol>
+<li>Introduction to NIMBLE: Basic concepts and workflows</li>
+<li>Working with NIMBLE models and converting from WinBUGS/JAGS</li>
+<li>Comparing and customizing MCMC methods in NIMBLE</li>
+<li>Strategies for improving MCMC</li>
+</ol>
+
+<p>Day 2 (Thursday):</p>
+
+<ol>
+<li>Writing your own functions and distributions </li>
+<li>Writing your own MCMC samplers </li>
+<li>Spatial modeling (part 1)</li>
+</ol>
+
+<p>Day 3 (Friday):</p>
+
+<ol>
+<li>Spatial modeling (part 2)</li>
+<li>Model selection and Bayesian nonparametrics</li>
+<li>Special topics breakouts
+a. Ecological models
+b. Sequential Monte Carlo and maximum likelihood methods</li>
+</ol>
+
+<h2>Installing NIMBLE</h2>
+
+<p>NIMBLE is an R package on CRAN, so in general it will be straightforward to install as with any R package, but you do need a compiler and related tools on your system.  </p>
+
+<p>In summary, here are the steps.</p>
+
+<ol>
+<li><p>Install compiler tools on your system. <a href="https://r-nimble.org/download">https://r-nimble.org/download</a> has more details on how to install <em>Rtools</em> on Windows and how to install the command line tools of <em>Xcode</em> on a Mac. Note that if you have packages requiring a compiler (e.g., <em>Rcpp</em>) on your computer, you should already have the compiler tools installed.</p></li>
+<li><p>Install the <em>nimble</em> package from CRAN in the usual fashion for an R package. More details (including troubleshooting tips) can also be found in Section 4 of the <a href="https://r-nimble.org/html_manual/cha-installing-nimble.html">NIMBLE manual</a>.</p></li>
+</ol>
+
+<p>3) To test that things are working please run the following code  in R:</p>
+
+<p><code>
+library(nimble)
+code &lt;- nimbleCode({
+  y ~ dnorm(0,1)
+})
+model &lt;- nimbleModel(code)
+cModel &lt;- compileNimble(model)
+</code></p>
+
+<p>If that runs without error, you're all set. If not, please see the troubleshooting tips and email nimble.stats@gmail.com directly if you can't get things going.  </p>
+
+<p>In general we encourage you to update to the most recent version of NIMBLE, 0.9.1.</p>
+
+<p>IMPORTANT: for those of you using R 4.0 under Windows, you MUST use version 0.9.1.</p>
+
+<h3>Development version(s) of NIMBLE</h3>
+
+<p>Sometimes we make an update or new feature available on a github branch before it is released.  In the event a need arises to install from a branch, you can do so as follows (for branch "devel"):</p>
+
+<p>```
+library(devtools)</p>
+
+<p>install_github("nimble-dev/nimble", ref = "devel", subdir = "packages/nimble")
+```</p>
+
+<h2>Installing additional packages</h2>
+
+<p>Some of the packages we will use (beyond those automatically installed with <code>nimble</code>) can be installed as follows:</p>
+
+<p><code>
+install.packages("mcmcPlots")
+</code></p>
+
+<p><code>compareMCMCs</code> is a package in development that is not yet on CRAN:</p>
+
+<p>```
+library(devtools)</p>
+
+<p>install_github("nimble-dev/compareMCMCs", subdir = "compareMCMCs")
+```</p>
