@@ -453,6 +453,12 @@ slides > slide {
 </div>
 <div id="agenda" class="slide section level1">
 <h1>Agenda</h1>
+<ol style="list-style-type: decimal">
+<li>Design of NIMBLE’s MCMC system</li>
+<li>Two-stage evaluation of nimbleFunctions with setup code.</li>
+<li>Setting up a new sampler: A simple Metropolis-Hastings example</li>
+<li>Worked example: auto-centering slope-intercept sampler.</li>
+</ol>
 </div>
 <div id="load-deer-e.-cervi-example" class="slide section level1">
 <h1>Load Deer E. cervi example</h1>
@@ -472,10 +478,21 @@ slides > slide {
 </div>
 <div id="design-of-nimbles-mcmc-system" class="slide section level1">
 <h1>Design of <code>nimble</code>’s MCMC system</h1>
+<p>Here is a figure of MCMC configuration and MCMCs:<a href="nimble_MCMC_design.pdf">nimble_MCMC_design.pdf</a></p>
 <ol style="list-style-type: decimal">
 <li>MCMC configuration object: Contains a list of sampler assignments, not actual samplers.</li>
 <li>MCMC object: Contains a list of sampler objects.</li>
 </ol>
+<p>To write new samplers, we need to understand:</p>
+<ul>
+<li>Two-stage evaluation of nimbleFunctions with setup code.</li>
+<li>Setup (configuration) rules for using a new MCMC sampler</li>
+<li>Run-time rules for management of model calculations and saved states.</li>
+<li>More about nimbleFunction programming.</li>
+</ul>
+</div>
+<div id="example-of-mcmc-configuration-object" class="slide section level1">
+<h1>Example of MCMC configuration object</h1>
 <p>Look at MCMC configuration object for just a few nodes</p>
 <div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb6-1" data-line-number="1">mcmcConf &lt;-<span class="st"> </span><span class="kw">configureMCMC</span>(DEmodel1, <span class="dt">nodes =</span> <span class="st">'farm.effect[1:3]'</span>)</a></code></pre></div>
 <pre><code>## ===== Monitors =====
@@ -510,32 +527,91 @@ slides > slide {
 <div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb18-1" data-line-number="1">fe1_sampler<span class="op">$</span>control</a></code></pre></div>
 <pre><code>## list()</code></pre>
 </div>
+<div id="what-happens-from-an-mcmc-configuration-object" class="slide section level1">
+<h1>What happens from an MCMC configuration object?</h1>
+<p>Eventually, an MCMC sampler object is created by a call like this (for adaptive randomw-walk MH):</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb20-1" data-line-number="1"><span class="kw">sampler_RW</span>(model, mvSaved, target, control)</a></code></pre></div>
+<ul>
+<li>This is stage one of two-stage evaluation. It instantiates an object of a <code>sampler_RW</code> class.</li>
+<li><code>model</code> is the model</li>
+<li><code>mvSaved</code> is a <code>modelValues</code> object for keeping a set of saved model states.</li>
+<li><code>target</code> is a vector of target node names</li>
+<li><code>control</code> is a list of whatever sampler-specific configuration settings are needed.</li>
+</ul>
+</div>
 <div id="two-stage-evaluation-in-nimblefunctions" class="slide section level1">
 <h1>Two-stage evaluation in nimbleFunctions</h1>
 <p>Say we want a nimbleFunction to calculate some nodes and their dependencies.</p>
-<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb20-1" data-line-number="1">calcDepsNF &lt;-<span class="st"> </span><span class="kw">nimbleFunction</span>(</a>
-<a class="sourceLine" id="cb20-2" data-line-number="2">  <span class="dt">setup =</span> <span class="cf">function</span>(model, nodes) {</a>
-<a class="sourceLine" id="cb20-3" data-line-number="3">    calcNodes &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">getDependencies</span>(nodes)</a>
-<a class="sourceLine" id="cb20-4" data-line-number="4">  },</a>
-<a class="sourceLine" id="cb20-5" data-line-number="5">  <span class="dt">run =</span> <span class="cf">function</span>() {</a>
-<a class="sourceLine" id="cb20-6" data-line-number="6">    ans &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">calculate</span>(calcNodes)</a>
-<a class="sourceLine" id="cb20-7" data-line-number="7">    <span class="kw">return</span>(ans)</a>
-<a class="sourceLine" id="cb20-8" data-line-number="8">    <span class="kw">returnType</span>(<span class="kw">double</span>())</a>
-<a class="sourceLine" id="cb20-9" data-line-number="9">  }</a>
-<a class="sourceLine" id="cb20-10" data-line-number="10">)</a></code></pre></div>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb21-1" data-line-number="1">calcDepsNF &lt;-<span class="st"> </span><span class="kw">nimbleFunction</span>(</a>
+<a class="sourceLine" id="cb21-2" data-line-number="2">  <span class="dt">setup =</span> <span class="cf">function</span>(model, nodes) {</a>
+<a class="sourceLine" id="cb21-3" data-line-number="3">    calcNodes &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">getDependencies</span>(nodes)</a>
+<a class="sourceLine" id="cb21-4" data-line-number="4">  },</a>
+<a class="sourceLine" id="cb21-5" data-line-number="5">  <span class="dt">run =</span> <span class="cf">function</span>() {</a>
+<a class="sourceLine" id="cb21-6" data-line-number="6">    ans &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">calculate</span>(calcNodes)</a>
+<a class="sourceLine" id="cb21-7" data-line-number="7">    <span class="kw">return</span>(ans)</a>
+<a class="sourceLine" id="cb21-8" data-line-number="8">    <span class="kw">returnType</span>(<span class="kw">double</span>())</a>
+<a class="sourceLine" id="cb21-9" data-line-number="9">  }</a>
+<a class="sourceLine" id="cb21-10" data-line-number="10">)</a></code></pre></div>
 </div>
 <div id="two-stage-evaluation-in-nimblefunctions-1" class="slide section level1">
 <h1>Two-stage evaluation in nimbleFunctions</h1>
-<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb21-1" data-line-number="1">calcDeps_farm1 &lt;-<span class="st"> </span><span class="kw">calcDepsNF</span>(DEmodel1, <span class="st">'farm.effect[1]'</span>) <span class="co">## first stage: setup code</span></a>
-<a class="sourceLine" id="cb21-2" data-line-number="2">calcDeps_farm1<span class="op">$</span><span class="kw">run</span>()</a></code></pre></div>
+<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb22-1" data-line-number="1">calcDeps_farm1 &lt;-<span class="st"> </span><span class="kw">calcDepsNF</span>(DEmodel1, <span class="st">'farm.effect[1]'</span>) <span class="co">## first stage: setup code</span></a>
+<a class="sourceLine" id="cb22-2" data-line-number="2">calcDeps_farm1<span class="op">$</span><span class="kw">run</span>() <span class="co">## second stage: run code</span></a></code></pre></div>
 <pre><code>## [1] -11.21395</code></pre>
-<h3 id="go-to-r-to-demonstrate-uncompiled-browsingdebugging.">Go to R to demonstrate uncompiled browsing/debugging.</h3>
+<p>We could compiled <code>calcDeps_farm1</code>. <code>run</code> would become a method of a C++ class.</p>
+<p>Notice that:</p>
+<ul>
+<li><code>calcDeps_farm1</code> is an R reference class object of a custom-generated class.</li>
+<li><code>model</code> and <code>calcNodes</code> are fields in the class</li>
+</ul>
+<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb24-1" data-line-number="1"><span class="kw">class</span>(calcDeps_farm1) <span class="co">## We could have used name = some_name to set the class name</span></a></code></pre></div>
+<pre><code>## [1] &quot;nfRefClass_R_GlobalEnv56&quot;
+## attr(,&quot;package&quot;)
+## [1] &quot;.GlobalEnv&quot;</code></pre>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb26-1" data-line-number="1">calcDeps_farm1<span class="op">$</span>calcNodes</a></code></pre></div>
+<pre><code>##  [1] &quot;farm.effect[1]&quot;          &quot;disease.probability[1]&quot; 
+##  [3] &quot;disease.probability[2]&quot;  &quot;disease.probability[3]&quot; 
+##  [5] &quot;disease.probability[4]&quot;  &quot;disease.probability[5]&quot; 
+##  [7] &quot;disease.probability[6]&quot;  &quot;disease.probability[7]&quot; 
+##  [9] &quot;disease.probability[8]&quot;  &quot;disease.probability[9]&quot; 
+## [11] &quot;disease.probability[10]&quot; &quot;disease.probability[11]&quot;
+## [13] &quot;disease.probability[12]&quot; &quot;disease.probability[13]&quot;
+## [15] &quot;disease.probability[14]&quot; &quot;disease.probability[15]&quot;
+## [17] &quot;Ecervi.01[1]&quot;            &quot;Ecervi.01[2]&quot;           
+## [19] &quot;Ecervi.01[3]&quot;            &quot;Ecervi.01[4]&quot;           
+## [21] &quot;Ecervi.01[5]&quot;            &quot;Ecervi.01[6]&quot;           
+## [23] &quot;Ecervi.01[7]&quot;            &quot;Ecervi.01[8]&quot;           
+## [25] &quot;Ecervi.01[9]&quot;            &quot;Ecervi.01[10]&quot;          
+## [27] &quot;Ecervi.01[11]&quot;           &quot;Ecervi.01[12]&quot;          
+## [29] &quot;Ecervi.01[13]&quot;           &quot;Ecervi.01[14]&quot;          
+## [31] &quot;Ecervi.01[15]&quot;</code></pre>
+</div>
+<div id="go-to-r-to-demonstrate-uncompiled-browsingdebugging." class="slide section level1">
+<h1>Go to R to demonstrate uncompiled browsing/debugging.</h1>
+<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb28-1" data-line-number="1">calcDepsNF &lt;-<span class="st"> </span><span class="kw">nimbleFunction</span>(</a>
+<a class="sourceLine" id="cb28-2" data-line-number="2">  <span class="dt">setup =</span> <span class="cf">function</span>(model, nodes) {</a>
+<a class="sourceLine" id="cb28-3" data-line-number="3">    <span class="kw">browser</span>()</a>
+<a class="sourceLine" id="cb28-4" data-line-number="4">    calcNodes &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">getDependencies</span>(nodes)</a>
+<a class="sourceLine" id="cb28-5" data-line-number="5">  },</a>
+<a class="sourceLine" id="cb28-6" data-line-number="6">  <span class="dt">run =</span> <span class="cf">function</span>() {</a>
+<a class="sourceLine" id="cb28-7" data-line-number="7">    <span class="kw">browser</span>()</a>
+<a class="sourceLine" id="cb28-8" data-line-number="8">    ans &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">calculate</span>(calcNodes)</a>
+<a class="sourceLine" id="cb28-9" data-line-number="9">    <span class="kw">return</span>(ans)</a>
+<a class="sourceLine" id="cb28-10" data-line-number="10">    <span class="kw">returnType</span>(<span class="kw">double</span>())</a>
+<a class="sourceLine" id="cb28-11" data-line-number="11">  }</a>
+<a class="sourceLine" id="cb28-12" data-line-number="12">) <span class="co">## warning about not being able to compiled with browser() is expected.</span></a></code></pre></div>
+<p>Stepping through debugging from <code>browser()</code> will not work well in Rmarkdown, so this code is not evaluated. Run it in your own R session.</p>
+<div class="sourceCode" id="cb29"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb29-1" data-line-number="1">calcDeps_farm1 &lt;-<span class="st"> </span><span class="kw">calcDepsNF</span>(DEmodel1, <span class="st">'farm.effect[1]'</span>) <span class="co">## We'll see the setup code followed by internal code.</span></a>
+<a class="sourceLine" id="cb29-2" data-line-number="2">calcDeps_farm1<span class="op">$</span><span class="kw">run</span>()</a></code></pre></div>
 </div>
 <div id="more-about-nimblefunctions" class="slide section level1">
 <h1>More about nimbleFunctions</h1>
 <ul>
-<li>Without setup code, a <code>nimbleFunction</code> becomes an R function and a C++ function.</li>
-<li>With setup code, a <code>nimbleFunction</code> becomes an R reference class definition and a C++ class definition.</li>
+<li>Without setup code, a <code>nimbleFunction</code> becomes an R function (uncompiled) and a C++ function (compiled).</li>
+<li>With setup code, a <code>nimbleFunction</code> becomes an R reference class definition (uncompiled) and a C++ class definition (compiled).
+<ul>
+<li><code>nimbleFunction</code> returns a generator (aka constructor, aka initializer) of new class objects.</li>
+</ul></li>
 </ul>
 <h3 id="nimblefunction-class-definitions-i.e-with-setup-code">nimbleFunction class definitions (i.e with setup code)</h3>
 <ul>
@@ -546,59 +622,68 @@ slides > slide {
 <li><code>run</code> and other methods can be run uncompiled (in R) or compiled (via C++).
 <ul>
 <li>Typically repeated “actual algorithm” calculations such as MCMC sampler updates.</li>
+<li>Can operate models.</li>
 </ul></li>
 <li>Any objects (e.g. <code>calcNodes</code> and <code>model</code>) in <code>setup</code> can be used in <code>run</code>.
 <ul>
 <li>Internally, these are automatically set up as class member data.</li>
+<li>You do not need to explicitly declare class member data.</li>
+<li>Nodes used in model operations are “baked in” (aka partially evaluated) during compilation.
+<ul>
+<li>Node vectors must be created in setup code and used in run code.</li>
+<li>They can’t be dynamically modified in run code.</li>
+</ul></li>
 </ul></li>
 </ul>
 </div>
 <div id="step-through-setup-and-run-code-in-uncompiled-execution" class="slide section level1">
 <h1>Step through setup and run code in uncompiled execution</h1>
-<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb23-1" data-line-number="1">calcDepsNF &lt;-<span class="st"> </span><span class="kw">nimbleFunction</span>(</a>
-<a class="sourceLine" id="cb23-2" data-line-number="2">  <span class="dt">setup =</span> <span class="cf">function</span>(model, nodes) {</a>
-<a class="sourceLine" id="cb23-3" data-line-number="3">    <span class="kw">browser</span>()</a>
-<a class="sourceLine" id="cb23-4" data-line-number="4">    calcNodes &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">getDependencies</span>(nodes)</a>
-<a class="sourceLine" id="cb23-5" data-line-number="5">  },</a>
-<a class="sourceLine" id="cb23-6" data-line-number="6">  <span class="dt">run =</span> <span class="cf">function</span>() {</a>
-<a class="sourceLine" id="cb23-7" data-line-number="7">    <span class="kw">browser</span>()</a>
-<a class="sourceLine" id="cb23-8" data-line-number="8">    ans &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">calculate</span>(calcNodes)</a>
-<a class="sourceLine" id="cb23-9" data-line-number="9">    <span class="kw">return</span>(ans)</a>
-<a class="sourceLine" id="cb23-10" data-line-number="10">    <span class="kw">returnType</span>(<span class="kw">double</span>())</a>
-<a class="sourceLine" id="cb23-11" data-line-number="11">  }</a>
-<a class="sourceLine" id="cb23-12" data-line-number="12">)</a></code></pre></div>
+<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb30-1" data-line-number="1">calcDepsNF &lt;-<span class="st"> </span><span class="kw">nimbleFunction</span>(</a>
+<a class="sourceLine" id="cb30-2" data-line-number="2">  <span class="dt">setup =</span> <span class="cf">function</span>(model, nodes) {</a>
+<a class="sourceLine" id="cb30-3" data-line-number="3">    <span class="kw">browser</span>()</a>
+<a class="sourceLine" id="cb30-4" data-line-number="4">    calcNodes &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">getDependencies</span>(nodes)</a>
+<a class="sourceLine" id="cb30-5" data-line-number="5">  },</a>
+<a class="sourceLine" id="cb30-6" data-line-number="6">  <span class="dt">run =</span> <span class="cf">function</span>() {</a>
+<a class="sourceLine" id="cb30-7" data-line-number="7">    <span class="kw">browser</span>()</a>
+<a class="sourceLine" id="cb30-8" data-line-number="8">    ans &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">calculate</span>(calcNodes)</a>
+<a class="sourceLine" id="cb30-9" data-line-number="9">    <span class="kw">return</span>(ans)</a>
+<a class="sourceLine" id="cb30-10" data-line-number="10">    <span class="kw">returnType</span>(<span class="kw">double</span>())</a>
+<a class="sourceLine" id="cb30-11" data-line-number="11">  }</a>
+<a class="sourceLine" id="cb30-12" data-line-number="12">)</a></code></pre></div>
 <pre><code>## Warning: Detected possible use of R functions in nimbleFunction run code.
 ## For this nimbleFunction to compile, these objects must be defined as
 ## nimbleFunctions, nimbleFunctionLists, or nimbleLists: browser.</code></pre>
-<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb25-1" data-line-number="1">calcDeps_farm1 &lt;-<span class="st"> </span><span class="kw">calcDepsNF</span>(DEmodel1, <span class="st">'farm.effect[1]'</span>) <span class="co">## first stage: setup code</span></a>
-<a class="sourceLine" id="cb25-2" data-line-number="2">calcDeps_farm1<span class="op">$</span><span class="kw">run</span>()</a></code></pre></div>
+<div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb32-1" data-line-number="1">calcDeps_farm1 &lt;-<span class="st"> </span><span class="kw">calcDepsNF</span>(DEmodel1, <span class="st">'farm.effect[1]'</span>) <span class="co">## first stage: setup code</span></a>
+<a class="sourceLine" id="cb32-2" data-line-number="2">calcDeps_farm1<span class="op">$</span><span class="kw">run</span>()</a></code></pre></div>
 </div>
 <div id="a-basic-random-walk-metropolis-hastings-sampler" class="slide section level1">
 <h1>A basic Random-Walk Metropolis-Hastings sampler</h1>
-<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb26-1" data-line-number="1">ourMH &lt;-<span class="st"> </span><span class="kw">nimbleFunction</span>(</a>
-<a class="sourceLine" id="cb26-2" data-line-number="2">  <span class="dt">name =</span> <span class="st">'ourMH'</span>,</a>
-<a class="sourceLine" id="cb26-3" data-line-number="3">  <span class="dt">contains =</span> sampler_BASE,</a>
-<a class="sourceLine" id="cb26-4" data-line-number="4">  <span class="dt">setup =</span> <span class="cf">function</span>(model, mvSaved, target, control) {</a>
-<a class="sourceLine" id="cb26-5" data-line-number="5">    scale &lt;-<span class="st"> </span><span class="cf">if</span>(<span class="op">!</span><span class="kw">is.null</span>(control<span class="op">$</span>scale)) control<span class="op">$</span>scale <span class="cf">else</span> <span class="dv">1</span></a>
-<a class="sourceLine" id="cb26-6" data-line-number="6">    calcNodes &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">getDependencies</span>(target)</a>
-<a class="sourceLine" id="cb26-7" data-line-number="7">  },</a>
-<a class="sourceLine" id="cb26-8" data-line-number="8">  <span class="dt">run =</span> <span class="cf">function</span>() {</a>
-<a class="sourceLine" id="cb26-9" data-line-number="9">    currentValue &lt;-<span class="st"> </span>model[[target]]</a>
-<a class="sourceLine" id="cb26-10" data-line-number="10">    currentLogProb &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">getLogProb</span>(calcNodes)</a>
-<a class="sourceLine" id="cb26-11" data-line-number="11">    proposalValue &lt;-<span class="st"> </span><span class="kw">rnorm</span>(<span class="dv">1</span>, <span class="dt">mean =</span> currentValue, <span class="dt">sd =</span> scale)</a>
-<a class="sourceLine" id="cb26-12" data-line-number="12">    model[[target]] &lt;&lt;-<span class="st"> </span>propValue</a>
-<a class="sourceLine" id="cb26-13" data-line-number="13">    proposalLogProb &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">calculate</span>(calcNodes)</a>
-<a class="sourceLine" id="cb26-14" data-line-number="14">    logAcceptanceRatio &lt;-<span class="st"> </span>currentLogProb <span class="op">-</span><span class="st"> </span>proposalLogProb</a>
-<a class="sourceLine" id="cb26-15" data-line-number="15">    accept &lt;-<span class="st"> </span><span class="kw">decide</span>(logMHR)</a>
-<a class="sourceLine" id="cb26-16" data-line-number="16">    <span class="cf">if</span>(accept)</a>
-<a class="sourceLine" id="cb26-17" data-line-number="17">      <span class="kw">copy</span>(<span class="dt">from =</span> model, <span class="dt">to =</span> mvSaved, <span class="dt">row =</span> <span class="dv">1</span>, <span class="dt">nodes =</span> calcNodes, <span class="dt">logProb =</span> <span class="ot">TRUE</span>)</a>
-<a class="sourceLine" id="cb26-18" data-line-number="18">    <span class="cf">else</span>     </a>
-<a class="sourceLine" id="cb26-19" data-line-number="19">      <span class="kw">copy</span>(<span class="dt">from =</span> mvSaved, <span class="dt">to =</span> model, <span class="dt">row =</span> <span class="dv">1</span>, <span class="dt">nodes =</span> calcNodes, <span class="dt">logProb =</span> <span class="ot">TRUE</span>)</a>
-<a class="sourceLine" id="cb26-20" data-line-number="20">  },</a>
-<a class="sourceLine" id="cb26-21" data-line-number="21">  <span class="dt">methods =</span> <span class="kw">list</span>(</a>
-<a class="sourceLine" id="cb26-22" data-line-number="22">    <span class="dt">reset =</span> <span class="cf">function</span>() {}</a>
-<a class="sourceLine" id="cb26-23" data-line-number="23">  )</a>
-<a class="sourceLine" id="cb26-24" data-line-number="24">)</a></code></pre></div>
+<div class="sourceCode" id="cb33"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb33-1" data-line-number="1">ourMH &lt;-<span class="st"> </span><span class="kw">nimbleFunction</span>(</a>
+<a class="sourceLine" id="cb33-2" data-line-number="2">  <span class="dt">name =</span> <span class="st">'ourMH'</span>,                              <span class="co"># Convenient for class name of R reference class and generated C++ class</span></a>
+<a class="sourceLine" id="cb33-3" data-line-number="3">  <span class="dt">contains =</span> sampler_BASE,                     <span class="co"># There is a simple class inheritance system.</span></a>
+<a class="sourceLine" id="cb33-4" data-line-number="4">  <span class="dt">setup =</span> <span class="cf">function</span>(model, mvSaved, target, control) {                 <span class="co"># REQUIRED setup arguments</span></a>
+<a class="sourceLine" id="cb33-5" data-line-number="5">    scale &lt;-<span class="st"> </span><span class="cf">if</span>(<span class="op">!</span><span class="kw">is.null</span>(control<span class="op">$</span>scale)) control<span class="op">$</span>scale <span class="cf">else</span> <span class="dv">1</span>         <span class="co"># Typical extraction of control choices</span></a>
+<a class="sourceLine" id="cb33-6" data-line-number="6">    calcNodes &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">getDependencies</span>(target)                        <span class="co"># Typical query of model structure</span></a>
+<a class="sourceLine" id="cb33-7" data-line-number="7">  },                                                                  <span class="co"># setup can't return anything</span></a>
+<a class="sourceLine" id="cb33-8" data-line-number="8">  <span class="dt">run =</span> <span class="cf">function</span>() {</a>
+<a class="sourceLine" id="cb33-9" data-line-number="9">    currentValue &lt;-<span class="st"> </span>model[[target]]                                   <span class="co"># extract current value</span></a>
+<a class="sourceLine" id="cb33-10" data-line-number="10">    currentLogProb &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">getLogProb</span>(calcNodes)                     <span class="co"># get log &quot;denominator&quot; from cached values</span></a>
+<a class="sourceLine" id="cb33-11" data-line-number="11">    proposalValue &lt;-<span class="st"> </span><span class="kw">rnorm</span>(<span class="dv">1</span>, <span class="dt">mean =</span> currentValue, <span class="dt">sd =</span> scale)        <span class="co"># generate proposal value</span></a>
+<a class="sourceLine" id="cb33-12" data-line-number="12">    model[[target]] &lt;&lt;-<span class="st"> </span>proposalValue                                 <span class="co"># put proposal value in model</span></a>
+<a class="sourceLine" id="cb33-13" data-line-number="13">    proposalLogProb &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">calculate</span>(calcNodes)                     <span class="co"># calculate log &quot;numerator&quot; </span></a>
+<a class="sourceLine" id="cb33-14" data-line-number="14">    logAcceptanceRatio &lt;-<span class="st"> </span>currentLogProb <span class="op">-</span><span class="st"> </span>proposalLogProb            <span class="co"># log acceptance ratio</span></a>
+<a class="sourceLine" id="cb33-15" data-line-number="15">    <span class="co"># Alternative:</span></a>
+<a class="sourceLine" id="cb33-16" data-line-number="16">    <span class="co"># logAcceptanceRatio &lt;- model$calculateDiff(calcNodes)</span></a>
+<a class="sourceLine" id="cb33-17" data-line-number="17">    accept &lt;-<span class="st"> </span><span class="kw">decide</span>(logMHR)                                          <span class="co"># utility function to generate accept/reject decision</span></a>
+<a class="sourceLine" id="cb33-18" data-line-number="18">    <span class="cf">if</span>(accept)                                                        <span class="co"># accept synchronize model -&gt; mvSaved</span></a>
+<a class="sourceLine" id="cb33-19" data-line-number="19">      <span class="kw">copy</span>(<span class="dt">from =</span> model, <span class="dt">to =</span> mvSaved, <span class="dt">row =</span> <span class="dv">1</span>, <span class="dt">nodes =</span> calcNodes, <span class="dt">logProb =</span> <span class="ot">TRUE</span>)</a>
+<a class="sourceLine" id="cb33-20" data-line-number="20">    <span class="cf">else</span>                                                              <span class="co"># reject: synchronize mvSaved -&gt; model</span></a>
+<a class="sourceLine" id="cb33-21" data-line-number="21">      <span class="kw">copy</span>(<span class="dt">from =</span> mvSaved, <span class="dt">to =</span> model, <span class="dt">row =</span> <span class="dv">1</span>, <span class="dt">nodes =</span> calcNodes, <span class="dt">logProb =</span> <span class="ot">TRUE</span>)</a>
+<a class="sourceLine" id="cb33-22" data-line-number="22">  },</a>
+<a class="sourceLine" id="cb33-23" data-line-number="23">  <span class="dt">methods =</span> <span class="kw">list</span>(                              <span class="co"># required method for sampler_BASE base class</span></a>
+<a class="sourceLine" id="cb33-24" data-line-number="24">    <span class="dt">reset =</span> <span class="cf">function</span>() {}</a>
+<a class="sourceLine" id="cb33-25" data-line-number="25">  )</a>
+<a class="sourceLine" id="cb33-26" data-line-number="26">)</a></code></pre></div>
 </div>
 <div id="rules-for-each-sampler" class="slide section level1">
 <h1>Rules for each sampler</h1>
@@ -628,11 +713,75 @@ slides > slide {
 <div id="introduction-to-modelvalues" class="slide section level1">
 <h1>Introduction to <code>modelValues</code></h1>
 <ul>
-<li></li>
+<li>A <code>modelValues</code> class does the job of holding multiple sets of values of
+<ul>
+<li>model variables and</li>
+<li>log probabilities (“logProbs”) of stochastic nodes.</li>
+</ul></li>
+<li>We think of each set of values as a “row”.</li>
+<li><code>modelValues</code> classes are like <code>nimbleFunctions</code> in that:
+<ul>
+<li>They can be compiled.</li>
+<li>They should work the same way compiled and uncompiled.</li>
+</ul></li>
+<li>MCMC output is stored in a <code>modelValues</code> object.</li>
+<li>Each <code>modelValues</code> class comes from a configuration of what variables are needed (and their types ans sizes).
+<ul>
+<li>Typically the configuration is generated from a model or from variables monitored in MCMC.</li>
+<li>(Actually, one can hand-configure a <code>modelValues</code> in any way one wants.)</li>
+</ul></li>
+<li>MCMC uses one <code>modelValues</code> object configured for <strong>all</strong> model variables and logProbs.
+<ul>
+<li>Only a single “row” is needed.</li>
+</ul></li>
+<li>This is the <code>mvSaved</code> and is synchronized with the model at entry of exit of each sampler.</li>
 </ul>
 </div>
 <div id="stepping-through-uncompiled-execution" class="slide section level1">
 <h1>Stepping through uncompiled execution</h1>
+<p>Version with <code>browser()</code>s</p>
+<div class="sourceCode" id="cb34"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb34-1" data-line-number="1">ourMH_debug &lt;-<span class="st"> </span><span class="kw">nimbleFunction</span>(</a>
+<a class="sourceLine" id="cb34-2" data-line-number="2">  <span class="dt">name =</span> <span class="st">'ourMH_debug'</span>,</a>
+<a class="sourceLine" id="cb34-3" data-line-number="3">  <span class="dt">contains =</span> sampler_BASE,</a>
+<a class="sourceLine" id="cb34-4" data-line-number="4">  <span class="dt">setup =</span> <span class="cf">function</span>(model, mvSaved, target, control) {</a>
+<a class="sourceLine" id="cb34-5" data-line-number="5">    <span class="kw">browser</span>()</a>
+<a class="sourceLine" id="cb34-6" data-line-number="6">    scale &lt;-<span class="st"> </span><span class="cf">if</span>(<span class="op">!</span><span class="kw">is.null</span>(control<span class="op">$</span>scale)) control<span class="op">$</span>scale <span class="cf">else</span> <span class="dv">1</span> </a>
+<a class="sourceLine" id="cb34-7" data-line-number="7">    calcNodes &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">getDependencies</span>(target)                </a>
+<a class="sourceLine" id="cb34-8" data-line-number="8">  },                                                          </a>
+<a class="sourceLine" id="cb34-9" data-line-number="9">  <span class="dt">run =</span> <span class="cf">function</span>() {</a>
+<a class="sourceLine" id="cb34-10" data-line-number="10">    <span class="kw">browser</span>()</a>
+<a class="sourceLine" id="cb34-11" data-line-number="11">    currentValue &lt;-<span class="st"> </span>model[[target]]                           </a>
+<a class="sourceLine" id="cb34-12" data-line-number="12">    currentLogProb &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">getLogProb</span>(calcNodes)             </a>
+<a class="sourceLine" id="cb34-13" data-line-number="13">    proposalValue &lt;-<span class="st"> </span><span class="kw">rnorm</span>(<span class="dv">1</span>, <span class="dt">mean =</span> currentValue, <span class="dt">sd =</span> scale)</a>
+<a class="sourceLine" id="cb34-14" data-line-number="14">    model[[target]] &lt;&lt;-<span class="st"> </span>proposalValue                             </a>
+<a class="sourceLine" id="cb34-15" data-line-number="15">    proposalLogProb &lt;-<span class="st"> </span>model<span class="op">$</span><span class="kw">calculate</span>(calcNodes)             </a>
+<a class="sourceLine" id="cb34-16" data-line-number="16">    logAcceptanceRatio &lt;-<span class="st"> </span>currentLogProb <span class="op">-</span><span class="st"> </span>proposalLogProb    </a>
+<a class="sourceLine" id="cb34-17" data-line-number="17">    accept &lt;-<span class="st"> </span><span class="kw">decide</span>(logMHR)                                     </a>
+<a class="sourceLine" id="cb34-18" data-line-number="18">    <span class="cf">if</span>(accept)                                                   </a>
+<a class="sourceLine" id="cb34-19" data-line-number="19">      <span class="kw">copy</span>(<span class="dt">from =</span> model, <span class="dt">to =</span> mvSaved, <span class="dt">row =</span> <span class="dv">1</span>, <span class="dt">nodes =</span> calcNodes, <span class="dt">logProb =</span> <span class="ot">TRUE</span>)</a>
+<a class="sourceLine" id="cb34-20" data-line-number="20">    <span class="cf">else</span>                                                         </a>
+<a class="sourceLine" id="cb34-21" data-line-number="21">      <span class="kw">copy</span>(<span class="dt">from =</span> mvSaved, <span class="dt">to =</span> model, <span class="dt">row =</span> <span class="dv">1</span>, <span class="dt">nodes =</span> calcNodes, <span class="dt">logProb =</span> <span class="ot">TRUE</span>)</a>
+<a class="sourceLine" id="cb34-22" data-line-number="22">  },</a>
+<a class="sourceLine" id="cb34-23" data-line-number="23">  <span class="dt">methods =</span> <span class="kw">list</span>(                              </a>
+<a class="sourceLine" id="cb34-24" data-line-number="24">    <span class="dt">reset =</span> <span class="cf">function</span>() {}</a>
+<a class="sourceLine" id="cb34-25" data-line-number="25">  )</a>
+<a class="sourceLine" id="cb34-26" data-line-number="26">)</a></code></pre></div>
+<pre><code>## Warning: Detected possible use of R functions in nimbleFunction run code.
+## For this nimbleFunction to compile, these objects must be defined as
+## nimbleFunctions, nimbleFunctionLists, or nimbleLists: browser.</code></pre>
+</div>
+<div id="stepping-through-uncompiled-execution-1" class="slide section level1">
+<h1>Stepping through uncompiled execution</h1>
+<div class="sourceCode" id="cb36"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb36-1" data-line-number="1">mcmcConf &lt;-<span class="st"> </span><span class="kw">configureMCMC</span>(DEmodel1, <span class="dt">nodes =</span> <span class="ot">NULL</span>) <span class="co">## Make an empty configuration</span></a></code></pre></div>
+<pre><code>## ===== Monitors =====
+## thin = 1: sex.effect, length.effect, farm.sd
+## ===== Samplers =====</code></pre>
+<div class="sourceCode" id="cb38"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb38-1" data-line-number="1">mcmcConf<span class="op">$</span><span class="kw">addSampler</span>(<span class="dt">type =</span> <span class="st">&quot;ourMH_debug&quot;</span>, <span class="dt">target =</span> <span class="st">'farm.effect[1]'</span>)</a></code></pre></div>
+<div class="sourceCode" id="cb39"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb39-1" data-line-number="1">mcmc &lt;-<span class="st"> </span><span class="kw">buildMCMC</span>(mcmcConf)</a>
+<a class="sourceLine" id="cb39-2" data-line-number="2">mcmc<span class="op">$</span><span class="kw">run</span>(<span class="dv">5</span>)</a></code></pre></div>
+</div>
+<div id="lets-make-an-interesting-sampler" class="slide section level1">
+<h1>Let’s make an interesting sampler</h1>
 </div>
 
   <!-- dynamically load mathjax for compatibility with self-contained -->
