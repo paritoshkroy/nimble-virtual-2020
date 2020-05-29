@@ -2,12 +2,35 @@
 
 Materials for the virtual NIMBLE workshop, June 3-5 2020.
 
-All materials for the workshop are here. If you're familiar with Git/Github, you already know how to get all the materials on your computer. If you're not, simply click [here](https://github.com/nimble-training/nimble-virtual-2020/archive/master.zip).
+All materials for the workshop are here [UNDER CONSTRUCTION]. If you're familiar with Git/Github, you already know how to get all the materials on your computer. If you're not, simply click [here](https://github.com/nimble-training/nimble-virtual-2020/archive/master.zip).
 
-Get started [here](https://htmlpreview.github.io/?https://github.com/nimble-training/nimble-virtual-2020/blob/master/overview_slides.html) with logistical information and an outline of the workshop content.
+Get started [here](https://htmlpreview.github.io/?https://github.com/nimble-training/nimble-virtual-2020/blob/master/overview_slides.html) with logistical information.
 
 Location: Zoom (URL TBD)
 Time: 9 am - 2 pm California time (noon - 5 pm EDT)
+
+## Approximate schedule
+
+Day 1 (Wednesday):
+
+ 1. Introduction to NIMBLE: Basic concepts and workflows
+ 2. Working with NIMBLE models and converting from WinBUGS/JAGS
+ 3. Comparing and customizing MCMC methods in NIMBLE
+ 4. Strategies for improving MCMC
+
+Day 2 (Thursday):
+
+ 5. Writing your own functions and distributions 
+ 6. Writing your own MCMC samplers 
+ 7. Spatial modeling (part 1)
+
+Day 3 (Friday):
+
+ 8. Spatial modeling (part 2)
+ 9. Model selection and Bayesian nonparametrics
+ 10. Special topics breakouts
+    a. Ecological models
+    b. Sequential Monte Carlo and maximum likelihood methods
 
 ## Installing NIMBLE
 
@@ -30,6 +53,8 @@ model <- nimbleModel(code)
 cModel <- compileNimble(model)
 ```
 
-Note that to run on Windows under R 4.0, you will need our most recent version, 0.9.1.
 
-If that runs without error, you're all set. If not, please see the troubleshooting tips and email me directly if you can't get things going.  
+If that runs without error, you're all set. If not, please see the troubleshooting tips and email nimble.stats@gmail.com directly if you can't get things going.  
+
+In general we encourage you to update to the most recent version of NIMBLE, 0.9.1.
+IMPORTANT: for those of you using R 4.0 under Windows, you MUST use version 0.9.1.

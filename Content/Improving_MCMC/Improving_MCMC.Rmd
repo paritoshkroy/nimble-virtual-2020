@@ -1,0 +1,334 @@
+---
+title: "Strategies for improving MCMC"
+subtitle: "NIMBLE 2020 Virtual Workshop"
+author: "NIMBLE Development Team"
+output:
+  html_document:
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+library(nimble)
+
+DeerEcervi <- read.table('../../Data/DeerEcervi.txt', header = TRUE)
+
+## Create presence/absence data from counts.
+DeerEcervi$Ecervi.01 <- DeerEcervi$Ecervi
+DeerEcervi$Ecervi.01[DeerEcervi$Ecervi>0] <- 1
+## Center Length for better interpretation
+DeerEcervi$cLength <- DeerEcervi$Length - mean(DeerEcervi$Length)
+## Make a factor version of Sex for plotting
+DeerEcervi$fSex <- factor(DeerEcervi$Sex)
+## Make a factor and id version of Farm
+DeerEcervi$fFarm <- factor(DeerEcervi$Farm)
+DeerEcervi$farm.ids <- as.numeric(DeerEcervi$fFarm)
+
+```
+
+# Overview
+
+Some strategies for improving MCMC
+
+ - Customize sampler choices. E.g.,
+    - Try blocking correlated parameters.
+    - Try sampling standard deviations on a log scale.
+    - Try slice samplers instead of Metropolis-Hastings.
+    - Try multiple samplers for slow-mixing parameters.
+ - (Advanced; tomorrow) Write new samplers that take advantage of particular model structures
+ 
+ - Rewriting the model to reduce dependencies
+ - Vectorization to improve computational efficiency
+ - Marginalization to remove parameters
+
+# Think like a graph: reducing dependencies
+
+Consider a basic state-space model.
+
+Observation equation: $f(y_t | x_t)$
+
+State equation: $g(x_t | x_t-1)$
+
+Two equivalent ways to write state-space models:
+
+1. Process-noises are random variables.  States are deterministic given process noises. 
+
+```{r}
+code_heavy <- nimbleCode({
+  for(t in 1:n) 
+    y[t] ~ dnorm(x[t], sd= sigma)
+  for(t in 2:n) {
+    x[t] <- x[t-1] + eps[t-1]
+    eps[t] ~ dnorm(0, sd = omega)
+  }
+})
+```
+
+2. States are random variables.
+
+```{r}
+code_light <- nimbleCode({
+  for(t in 1:n) 
+    y[t] ~ dnorm(x[t], sd = sigma)
+  for(t in 2:n)
+    x[t] ~ dnorm(x[t-1], sd = omega)
+})
+```
+
+# Think like a graph: reducing dependencies (2)
+
+
+```{r}
+n <- 20
+m_heavy <- nimbleModel(code_heavy, data = list(y = rnorm(n)), 
+                       constants = list(n = n))
+m_light <- nimbleModel(code_light, data = list(y = rnorm(n)), 
+                       constants = list(n = n))
+```
+
+What calculations are required to update `eps[18]` or `eps[1]` compared to `x[18]` or `x[1]`?
+
+```{r}
+m_heavy$getDependencies('eps[18]')
+m_light$getDependencies('x[18]')
+
+m_heavy$getDependencies('eps[1]')
+m_light$getDependencies('x[1]')
+```
+
+# Think like a graph: when to vectorize
+
+Vectorizing some calculations:
+
+- Can make code more compact.
+- Can make model and MCMC building and compiling faster (fewer nodes).
+- Can improve MCMC efficiency, but sometimes not by much (less looping over nodes).
+- Can hurt MCMC efficiency if done in the wrong places (if unneeded dependencies introduced).
+
+```{r}
+code <- nimbleCode({
+  intercept ~ dnorm(0, sd = 1000)
+  slope ~ dnorm(0, sd = 1000)
+  sigma ~ dunif(0, 100)
+  predicted.y[1:4] <- intercept + slope * x[1:4] # vectorized node
+  for(i in 1:4) {
+    y[i] ~ dnorm(predicted.y[i], sd = sigma)
+  }
+})
+model <- nimbleModel(code, data = list(y = rnorm(4)))
+
+model$getDependencies('slope')
+```
+
+Here sampling of `slope` (and `intercept`) will probably be a bit more efficient because of the vectorized definition of `predicted.y`, since all observations depend on `slope` (and `intercept`). 
+
+We avoid some overhead by having one `predicted.y[1:4]` node rather than four `predicted.y[1], ..., predicted.y[4]` nodes.
+
+Another (manual) step would be to create a user-defined vectorized `dnorm` distribution so `y[1:4]` is a vector node. 
+
+# Think like a graph: when not to vectorize
+
+However, if `x[2]` (and the other 'x's) were a scalar parameter (in this case a random effect), vectorization is likely a bad idea. Any update for `x[2]` will calculate `predicted.y[1:4]` and `y[1],...,y[4]` when only `predicted.y[2]` and `y[2]` needs to be calculated.
+
+```{r}
+code <- nimbleCode({
+  intercept ~ dnorm(0, sd = 1000)
+  slope ~ dnorm(0, sd = 1000)
+  sigma ~ dunif(0, 100)
+  predicted.y[1:4] <- intercept + slope * x[1:4] # vectorized node
+  for(i in 1:4) {
+    x[i] ~ dnorm(0, 1)   # scalar random effects
+    y[i] ~ dnorm(predicted.y[i], sd = sigma)
+  }
+})
+model <- nimbleModel(code, data = list(y = rnorm(4)))
+
+model$getDependencies('x[2]')
+```
+
+# Marginalization
+
+In a hierarchical model, one can *in principle* always integrate over latent states. However only under certain situations can one do those integrals in closed form (analytically).
+
+Analytic integration is always possible in conjugate situations. For example:
+
+$$ y_i \sim N(\mu_i, \sigma^2); i=1,\ldots,n $$
+$$ \mu_i \sim N(\mu_0, \sigma_0^2),  i=1,\ldots,n $$
+
+Here there is one latent state per observation. We can do MCMC here, but it involves a large number of parameters, n+3.
+
+If we marginalize:
+
+  - We reduce the total number of computations done at each step of the MCMC.
+  - We reduce the dimensionality of the parameter space needing exploration.
+  - In some cases the complexity of calculating the marginalized density offsets some of the benefits above.
+
+Here's the marginalized result, with only 3 parameters.
+
+$$ y_i \sim N(\mu_0, \sigma^2 + \sigma_0^2) $$
+
+(If we want inference on $\mu_i, i=1,\ldots,n$ we need to sample the latent states conditional on the data and the MCMC draws of $\mu_0, \sigma_0^2, \sigma^2$.)
+
+# Generalizing the Deer example
+
+Suppose we wanted more flexibility than assuming a normal distribution for the farm effects in the Deer example.
+
+We could use a two-component normal mixture. In BUGS/JAGS, a standard way to do this is to introduce a latent indicator for each farm indicating which component it is in.
+
+It would be hard to constrain the mixture to have mean zero, so we'll move the intercept for sex 1 into the mixture.
+
+```{r}
+DEcodeFlex <- nimbleCode({
+  for(i in 1:2) {
+    # Priors for intercepts and length coefficients for sex = 1,2
+    sex.effect[1] <- 0    # constraint to allow mixture to have non-zero mean
+    sex.effect[2] ~ dnorm(0, sd = 1000)
+    length.effect[i] ~ dnorm(0, sd = 1000)
+  }
+  
+  # Priors for farm random effects
+  # 'Manual' inclusion of bivariate normal mixture
+  for(i in 1:num.farms) {
+    farm.effect[i] ~ dnorm(mu[ind[i]+1], sd = sigma[ind[i]+1])
+    ind[i] ~ dbern(pi)
+  }
+  for(i in 1:2) {
+    mu[i] ~ dnorm(0, sd = 1000)
+    sigma[i] ~ dunif(0, 20)
+  }
+  pi ~ dbeta(1, 1)   # same as dunif(0,1) but conjugacy will be detected
+  
+  # logit link and Bernoulli data probabilities
+  for(i in 1:num.animals) {
+    logit(disease.probability[i]) <- 
+      sex.effect[ sex[i] ] +
+      length.effect[ sex[i] ]*cLength[i] +
+      farm.effect[ farm.ids[i] ]
+    Ecervi.01[i] ~ dbern(disease.probability[i])
+  }
+})
+```
+
+Note: here `ind[i]` is a non-constant index - it's a latent state, unlike the indexing we saw earlier.
+
+# Mixture models: identifiability
+
+In mixture models, the meaning of the components can change - we could have:
+
+$$ \pi = 0.4 $$ $$ \mu_1 = -2, \sigma_1 = 1 $$ $$ \mu_2 = 1, \sigma_2 = 3 $$
+
+or
+
+$$ \pi = 0.6 $$ $$ \mu_1 = 1, \sigma_1 = 3 $$ $$  \mu_2 = -2, \sigma_2 = 1 $$
+
+This is fine if we don't care about interpretability (though it makes assessing MCMC mixing difficult).
+
+We could also add a constraint (which will in this case remove conjugacy) to the model code:
+
+```
+constrain_means ~ dconstraint(mu[1] < mu[2])
+```
+
+Then in we would set `constrain_means` equal to 1 via `data`. 
+
+# Marginalization in the Deer example
+
+We can always integrate over finite discrete random variables by summation, so we can integrate over the `ind[i]` variables, which take values of 0 or 1.
+
+The bivariate normal mixture density is: $$ \pi N(\mu_1, \sigma_1) + (1-\pi) N(\mu_2, \sigma_2) $$
+
+In BUGS/JAGS, one needs to use the "zeros trick" with a Poisson distribution and an 'observation' set to 0 to incorporate a non-standard density. That requires some gymnastics and adds nodes to the model graph.
+
+In NIMBLE, we write a user-defined distribution using a nimbleFunction. Let's ignore the details for now and just focus on writing the density calculations. 
+
+```{r}
+dnormmix2 <- nimbleFunction(
+  run = function(x = double(0), prob = double(0), 
+                 mean = double(1), sd = double(1), 
+                 log = logical(0, default = 0)) {
+    
+    returnType(double(0))
+    # generally calculate log density but directly feasible here
+    dens <- prob     * dnorm(x, mean[1], sd[1]) + 
+            (1-prob) * dnorm(x, mean[2], sd[2])  
+    if(log) 
+      return(log(dens)) else return(dens)
+  })
+```
+
+```{r, include=FALSE}
+# only needed for Rmd compilation; not needed for regular usage.
+assign('dnormmix2', dnormmix2, .GlobalEnv)
+# 'r' simulation function not required but included here because of Rmd compilation issues.
+rnormmix2 <- nimbleFunction(
+  run = function(n = integer(0), prob = double(0), 
+                 mean = double(1), sd = double(1)) {
+  # dummy code    
+  returnType(double(0))
+  return(0)
+})
+assign('rnormmix2', rnormmix2, .GlobalEnv)
+```
+
+# Using the new distribution
+
+One can then immediately use the distribution in a model. NIMBLE will compile the user-defined distribution together with everything else, as if `dnormmix2` were a distribution that NIMBLE provides.
+
+```{r}
+DEcodeFlexMarg <- nimbleCode({
+  # Priors for intercepts and length coefficients for sex = 1,2
+  sex.effect[1] <- 0    # constraint to allow mixture to have non-zero mean
+  sex.effect[2] ~ dnorm(0, sd = 1000)
+  for(i in 1:2) {
+    length.effect[i] ~ dnorm(0, sd = 1000)
+  }
+  
+  # Priors for farm random effects (centered on the 'baseline' sex)
+  for(i in 1:num.farms) {
+    farm.effect[i] ~ dnormmix2(pi, mu[1:2], sigma[1:2])
+  }
+  for(i in 1:2) {
+    mu[i] ~ dnorm(0, sd = 1000)
+    sigma[i] ~ dunif(0, 20)
+  }
+  pi ~ dbeta(1, 1)
+  
+  # logit link and Bernoulli data probabilities
+  for(i in 1:num.animals) {
+    logit(disease.probability[i]) <- 
+      sex.effect[ sex[i] ] +
+      length.effect[ sex[i] ]*cLength[i] +
+      farm.effect[ farm.ids[i] ]
+    Ecervi.01[i] ~ dbern(disease.probability[i])
+  }
+})
+```
+
+We can just create, compile, and use the model. 
+
+```{r}
+DEconstants <- list(num.farms = 24,
+                    num.animals = 826,
+                    cLength = DeerEcervi$cLength,
+                    sex = DeerEcervi$Sex,
+                    farm.ids = DeerEcervi$farm.ids)
+DEdata <- list(Ecervi.01 = DeerEcervi$Ecervi.01)
+
+DEinits <- function() {
+  list(sex.effect = c(0, 0), 
+       length.effect = c(0, 0),
+       pi = runif(1),
+       mu = rnorm(2),
+       sigma = rep(1, 2),
+       farm.effect = rnorm(24, 0, 1) )       
+}
+
+set.seed(1)
+model <- nimbleModel(DEcodeFlexMarg, data = DEdata, constants = DEconstants)
+model$setInits(DEinits())
+
+model$calculate('farm.effect')
+cModel <- compileNimble(model)
+cModel$calculate('farm.effect')
+```
+
+FIXME: decide whether to actually run MCMC on these model variations
