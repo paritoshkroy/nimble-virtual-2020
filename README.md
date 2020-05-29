@@ -7,6 +7,7 @@ To prepare for the workshop:
  - Install NIMBLE (see below)
  - Install additional packages (see below and check back for updates)
  - Download these materials [UNDER CONSTRUCTION]
+ - (Optional) Join a slack workspace for the workshop [UNDER CONSTRUCTION]
 
 All materials for the workshop are here [UNDER CONSTRUCTION]. If you're familiar with Git/Github, you already know how to get all the materials on your computer. If you're not, simply click [here](https://github.com/nimble-training/nimble-virtual-2020/archive/master.zip).
 
