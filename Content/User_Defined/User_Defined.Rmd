@@ -1,0 +1,218 @@
+---
+title: "User-defined distributions and functions"
+subtitle: "NIMBLE 2020 Virtual Workshop"
+author: "NIMBLE Development Team"
+output:
+  html_document:
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+library(nimble)
+```
+
+# User-defined distributions: motivation
+
+Why write a user-defined distribution?
+
+ - marginalize over parts of the model (e.g., latent states) for improved efficiency
+ - use distributions that NIMBLE does not provide (e.g., Pareto, beta-binomial, etc.)
+
+How do I write a user-defined distribution?
+
+- A `nimbleFunction` is defined by providing an R function as an argument.
+- The R function has special syntax for argument types and return type.
+- The `nimbleFunction` can be compiled if it is limited to basic math, distributions, for loops, if-then-else, and a few other basics.
+- "compiled" means that nimble will generate C++, compile that, and make it available for use from R.
+- nimbleFunctions can call out to arbitrary R or C/C++ code that you write for full customizability (`nimbleRcall`, `nimbleExternalCall`).
+
+# User-defined distribution: example
+
+Recall our bivariate normal mixture from yesterday. We always need the density function.
+
+```{r}
+dnormmix2 <- nimbleFunction(
+  run = function(x = double(), prob = double(), 
+                 mean = double(1), sd = double(1), 
+                 log = logical(0, default = 0)) {
+    returnType(double(0))
+    # generally calculate log density for numerical stability but not (directly) feasible here
+    dens <- prob*dnorm(x, mean[1], sd[1]) + (1-prob)*dnorm(x, mean[2], sd[2])  
+    # Note that use of distributions in nimbleFunctions uses default R parameterizations 
+    # (e.g., sd here)
+    if(log) 
+      return(log(dens)) else return(dens)
+  })
+```
+
+
+The simulation function is generally optional (unless it is needed for an algorithm you'll use with a model that uses your distribution). We'll include it here just for illustration.
+
+```{r}
+rnormmix2 <- nimbleFunction(
+  run = function(n = integer(), 
+                 prob = double(), mean = double(1), sd = double(1)) {
+    returnType(double(0))
+    
+    ind <- dbinom(1, pi) + 1  # dbern not available for compilation
+    value <- rnorm(1, mean[ind], sd[ind])
+    return(value)
+  })
+```
+
+# User-defined distribution: requirements
+
+First we write nimbleFunctions for the density and (optionally) simulation functions. Note the naming is analogous to how probability distributions are handled in R. 
+
+  - The 'd' function should have *log* as its last argument, a binary argument for whether the log density is returned or not. 
+  - The 'r' function should have *n* as its first argument but need only work for ```n=1```.
+
+The User Manual also shows how you could write CDF ('p') and inverse CDF ('q') such that you could make use of truncation with your distribution.
+
+For standard usage all you need is the density ('d') and (if simulation is needed in algorithms you'll use) simulation ('r') functions.
+
+If you'd like to allow for different parameterizations for your distribution, and other advanced features you can `register` the distribution with NIMBLE via `registerDistributions()` but in many cases (including this one) that is not necessary. NIMBLE will just find the distribution automatically.
+
+# User-defined functions: motivation
+
+Suppose we want to code a covariance matrix that depends on parameters for a Gaussian process model.
+
+In WinBUGS or JAGS, we would write the math to specify the matrix as part of the model code:
+
+```
+for(i in 1:n)
+  for(j in 1:n)
+    cov[i, j] <- sigma2*exp(-dists[i,j]/rho)
+
+prec[1:N, 1:N] <- inverse(cov[1:N, 1:N])
+x[1:N] ~ dmnorm(mu[1:N], prec[1:N, 1:N])
+```
+
+There are some disadvantages to this:
+
+  - Only the math functionality allowed in BUGS code can be used (e.g. no `if` statements)
+  - Model code can get complicated (lack of modularity)
+  - $n^2$ `cov[i,j]` nodes in the model are created, likely leading to inefficiencies at various stages of processing.  In NIMBLE, the inefficincy from creating that many nodes occurs when:
+
+    - creating the model
+    - configuring an MCMC
+    - compiling the model and any algorithms (e.g., MCMC)
+    - (to a lesser degree) running the algorithm (e.g., MCMC)
+
+# User-defined functions: example
+
+In NIMBLE, users can write functions that can then be directly used in model code.
+
+Here's the covariance matrix construction.
+
+```{r}
+expcov <- nimbleFunction(     
+  run = function(dists = double(2), rho = double(0), sigma = double(0)) {
+    returnType(double(2))
+    n <- dim(dists)[1]
+    result <- matrix(nrow = n, ncol = n, init = FALSE)
+    sigma2 <- sigma*sigma  # calculate once
+    for(i in 1:n)
+      for(j in 1:n)
+        result[i, j] <- sigma2*exp(-dists[i,j]/rho)
+    return(result)
+  })
+```
+
+```{r, include=FALSE}
+# only needed for Rmd compilation; not needed for regular usage.
+assign('expcov', expcov, .GlobalEnv)
+```
+
+
+The requirements of the nimbleFunction (as with user-defined distributions) are:
+
+ - type and dimension information for inputs
+ - type and dimension information for the output
+ - the `run` function is the function that executes the calculation of interest
+ - only syntax we can compile is allowed 
+
+# Using the user-defined function
+
+This function is then used in model code to determine the covariance matrix for the Gaussian spatial process at a finite set of locations (in this case the centroids of the spatial regions). 
+
+```{r}
+code <- nimbleCode({
+  mu[1:N] <- mu0 * ones[1:N]
+  cov[1:N, 1:N] <- expcov(dists[1:N, 1:N], rho, sigma)
+  x[1:N] ~ dmnorm(mu[1:N], cov = cov[1:N, 1:N])
+  # other parts of model omitted
+})
+```
+
+Note: we could also have inverted to use the precision, but that will generally be less efficient than working directly with the covariance. NIMBLE will take the Cholesky of the covariance and use that in the multivariate normal calculations. 
+
+# Using the user-defined function: full example
+
+Here's a basic spatial model that uses the spatial covariance matrix constructed by the user-defined function. We'll see this in more detail in the spatial module.
+
+```{r}
+code <- nimbleCode({
+  # (hyper)parameter priors
+  mu0 ~ dnorm(0, sd = 100)
+  sigma ~ dunif(0, 100)  # prior for variance components based on Gelman (2006)
+  rho ~ dunif(0, 5)      # there might be a better non-informative prior for this
+
+  # MVN normal (Gaussian process) prior
+  mu[1:N] <- mu0 * ones[1:N]
+  cov[1:N, 1:N] <- expcov(dists[1:N, 1:N], rho, sigma)
+  x[1:N] ~ dmnorm(mu[1:N], cov = cov[1:N, 1:N])
+  
+  # likelihood for count data (e.g., disease mapping)
+  for(i in 1:N) {
+    lambda[i] <- expected[i] * exp(x[i])
+    y[i] ~ dpois(lambda[i])
+  }
+})
+```
+
+# Vectorization within the function?
+
+We could have written our user-defined function like this:
+
+```{r}
+expcov <- nimbleFunction(     
+  run = function(dists = double(2), rho = double(0), sigma = double(0)) {
+    returnType(double(2))
+    result <- sigma*sigma * exp(-dists / rho)
+    return(result)
+  })
+```
+
+Since the code will be compiled to C++ code, where looping is fast, whether we vectorize or not may not make a big difference. 
+
+But there could be some difference (which will be faster is not clear), as the vectorized code will make use of Eigen and the non-vectorized will be standard C++. 
+
+# Exercise
+
+In the simple 4-observation regression example from yesterday, we said it would be more efficient to specify `y[1:4]` as coming from a single distribution:
+
+```{r}
+code <- nimbleCode({
+  intercept ~ dnorm(0, sd = 1000)
+  slope ~ dnorm(0, sd = 1000)
+  sigma ~ dunif(0, 100)
+  predicted.y[1:4] <- intercept + slope * x[1:4] # vectorized node
+  y[1:4] ~ dnorm_vec(predicted.y[1:4], sd = sigma)
+})
+```
+
+Modify the function below to write a vectorized `dnorm`. 
+
+As it stands now, it just works on scalar 'x'. 
+
+```{r, eval=FALSE}
+my_dnorm <- nimbleFunction(
+  run = function(x = double(0), 
+                 mean = double(0), sd = double(0), 
+                 log = logical(0, default = 0)) {
+    returnType(double(0))
+    logdens <- dnorm(x, mean, sd, log = TRUE)
+    if(log) return(logdens) else return(exp(dens))
+  })
+```

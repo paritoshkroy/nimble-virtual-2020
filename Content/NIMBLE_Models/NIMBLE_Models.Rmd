@@ -10,7 +10,7 @@ output:
 
 ```{r setup, include=FALSE}
 library(nimble)
-DeerEcervi <- read.table('../../Data/DeerEcervi.txt', header = TRUE)
+DeerEcervi <- read.table('../Content/examples/DeerEcervi/DeerEcervi.txt', header = TRUE)
 
 ## Create presence/absence data from counts.
 DeerEcervi$Ecervi.01 <- DeerEcervi$Ecervi
