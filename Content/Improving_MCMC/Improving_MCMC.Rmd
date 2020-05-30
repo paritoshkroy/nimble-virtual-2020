@@ -40,17 +40,17 @@ Some strategies for improving MCMC
     - Rotated coordinates to reduce posterior correlation
  - (Advanced; tomorrow) Write new samplers that take advantage of particular model structures
  
- - Rewriting the model to reduce dependencies
- - Vectorization to improve computational efficiency
- - Marginalization to remove parameters
+ - Rewrite the model to reduce dependencies
+ - Vectorize declarations to improve computational efficiency
+ - Marginalize to remove parameters
 
 # Think like a graph: reducing dependencies
 
 Consider a basic state-space model.
 
-Observation equation: $f(y_t | x_t)$
+Observation equation: $y_t \sim f(y_t | x_t)$.  (Parameters are not shown.)
 
-State equation: $g(x_t | x_t-1)$
+State equation: $x_t \sim g(x_t | x_t-1)$
 
 Two equivalent ways to write state-space models:
 
@@ -59,7 +59,7 @@ Two equivalent ways to write state-space models:
 ```{r}
 code_heavy <- nimbleCode({
   for(t in 1:n) 
-    y[t] ~ dnorm(x[t], sd= sigma)
+    y[t] ~ dnorm(x[t], sd = sigma)
   for(t in 2:n) {
     x[t] <- x[t-1] + eps[t-1]
     eps[t] ~ dnorm(0, sd = omega)
@@ -83,9 +83,11 @@ code_light <- nimbleCode({
 
 ```{r}
 n <- 20
-m_heavy <- nimbleModel(code_heavy, data = list(y = rnorm(n)), 
+m_heavy <- nimbleModel(code_heavy, 
+                       data = list(y = rnorm(n)), 
                        constants = list(n = n))
-m_light <- nimbleModel(code_light, data = list(y = rnorm(n)), 
+m_light <- nimbleModel(code_light, 
+                       data = list(y = rnorm(n)), 
                        constants = list(n = n))
 ```
 
@@ -106,7 +108,7 @@ Vectorizing some calculations:
 - Can make code more compact.
 - Can make model and MCMC building and compiling faster (fewer nodes).
 - Can improve MCMC efficiency, but sometimes not by much (less looping over nodes).
-- Can hurt MCMC efficiency if done in the wrong places (if unneeded dependencies introduced).
+- Can hurt MCMC efficiency if done in the wrong places (if unneeded dependencies are introduced).
 
 ```{r}
 code <- nimbleCode({
@@ -131,7 +133,7 @@ Another (manual) step would be to create a user-defined vectorized `dnorm` distr
 
 # Think like a graph: when not to vectorize
 
-However, if `x[2]` (and the other 'x's) were a scalar parameter (in this case a random effect), vectorization is likely a bad idea. Any update for `x[2]` will calculate `predicted.y[1:4]` and `y[1],...,y[4]` when only `predicted.y[2]` and `y[2]` needs to be calculated.
+However, if `x[2]` (and the other 'x's) were a scalar parameter (in this case a random effect), vectorization is likely a bad idea. Any update for `x[2]` will calculate `predicted.y[1:4]` and `y[1],...,y[4]` when only `predicted.y[2]` and `y[2]` need to be calculated.
 
 ```{r}
 code <- nimbleCode({
@@ -148,6 +150,8 @@ model <- nimbleModel(code, data = list(y = rnorm(4)))
 
 model$getDependencies('x[2]')
 ```
+
+In this case, vectorization has made more dependencies for `x[2]` than should be necessary.  This would result in wasted computation during MCMC sampling.
 
 # Marginalization
 
@@ -212,7 +216,7 @@ DEcodeFlex <- nimbleCode({
 })
 ```
 
-Note: here `ind[i]` is a non-constant index - it's a latent state, unlike the indexing we saw earlier.
+Note: here `ind[i]` is a non-constant index (unlike its use earlier). It's a latent state, subject to MCMC sampling.
 
 # Mixture models: identifiability
 
@@ -232,7 +236,7 @@ We could also add a constraint (which will in this case remove conjugacy) to the
 constrain_means ~ dconstraint(mu[1] < mu[2])
 ```
 
-Then in we would set `constrain_means` equal to 1 via `data`. 
+Then we would include `constrain_means = 1` in the `data` list.
 
 # Marginalization in the Deer example
 
@@ -251,7 +255,8 @@ dnormmix2 <- nimbleFunction(
                  log = logical(0, default = 0)) {
     
     returnType(double(0))
-    # generally calculate log density but directly feasible here
+    # generally we want to calculate probability (density) on a 
+    # log scale, but here that won't work.
     dens <- prob     * dnorm(x, mean[1], sd[1]) + 
             (1-prob) * dnorm(x, mean[2], sd[2])  
     if(log) 
