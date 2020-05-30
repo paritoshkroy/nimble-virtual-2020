@@ -370,7 +370,5 @@ conf$addMonitors('farm.effect')
 mcmc <- buildMCMC(conf)
 cmcmc <- compileNimble(mcmc, project = model)
 samples <- runMCMC(cmcmc, niter = 5000, nburnin = 0)
-
-
 ```
 

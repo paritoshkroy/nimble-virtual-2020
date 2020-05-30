@@ -590,7 +590,19 @@ You may not know where there are lifted nodes.
 
 Always determine what to `calculate` or `simulate` from `getDependencies` or other such tools.
 
-# Exercise
+# Exercises
 
-Please run through the code from this module and use the commands discussed to understand the nodes and dependency structure of the Deer example.
+1) Please run through the code from this module and use the commands discussed to understand the nodes and dependency structure of the Deer example.
+
+2) Write code to fix the hyperparameters of the Deer example and given those fixed values, generate random farm effects and new observations, as would be needed for a simulation study:
+
+```{r}
+model$farm.sd <- 1
+model$sex.effect <- c(1.5, 2.5)
+model$length.effect <- c(0.3, 0.5)
+# explore the arguments for `getDependencies` and `simulate`
+deps <- model$getDependencies('???')
+model$simulate(???)
+```
+
 

@@ -1,11 +1,15 @@
 ---
 title: "Model selection/comparison/expansion topics: Variable selection, WAIC, and Bayesian non-parametrics"
-subtitle: "NIMBLE virtual workshop, June 2020"
+subtitle: "NIMBLE 2020 Virtual Workshop"
 author: "NIMBLE Development Team"
 output:
   html_document:
     code_folding: show
 ---
+
+```{r chunksetup, include=FALSE} 
+library(nimble)
+```
 
 # Introduction
 
@@ -21,8 +25,8 @@ As most of you will probably know, meta analysis seeks to combine results across
 
 We'll start with a standard random effects meta analysis and then robustify the analysis using Bayesian nonparametric methods.
 
- - Side effects of a very popular drug for diabetes called Avandia. 
- - Primary question: Does Avandia uses increase the risk of myocardial infarction (heart attack). 
+ - Side effects of a (formerly) very popular drug for diabetes called Avandia. 
+ - Primary question: Does Avandia use increase the risk of myocardial infarction (heart attack). 
  - 48 studies (the 49th study in the data file is different in some ways and excluded here), each with treatment and control arms.
 
 ```{r, avandia-view}
@@ -30,7 +34,7 @@ dat <- read.csv('../examples/avandia.csv')
 head(dat)
 ```
 
-Here we'll start with a generalized linear mixed model (GLMM)-based meta analysis. In fact the model is not so different than our example litters model.
+Here we'll start with a generalized linear mixed model (GLMM)-based meta analysis. 
 
 # Basic meta analysis of Avandia MIs
 
@@ -48,17 +52,17 @@ constants = list(n = n, m = m, nStudies = nStudies)
 inits = list(theta = 0, mu = 0, tau = 1, gamma = rnorm(nStudies))
 
 codeParam <- nimbleCode({
-    for(i in 1:nStudies) {
-        y[i] ~ dbin(size = m[i], prob = q[i]) # avandia MIs
-        x[i] ~ dbin(size = n[i], prob = p[i]) # control MIs
-        q[i] <- expit(theta + gamma[i])       # Avandia log-odds
-        p[i] <- expit(gamma[i])               # control log-odds
-        gamma[i] ~ dnorm(mu, sd = tau)        # study effects
-    }
-    theta ~ dflat()        # effect of Avandia
-    # random effects hyperparameters
-    mu ~ dflat()
-    tau ~ dunif(0, 100)
+  for(i in 1:nStudies) {
+    y[i] ~ dbin(size = m[i], prob = q[i]) # avandia MIs
+    x[i] ~ dbin(size = n[i], prob = p[i]) # control MIs
+    q[i] <- expit(theta + gamma[i])       # Avandia log-odds
+    p[i] <- expit(gamma[i])               # control log-odds
+    gamma[i] ~ dnorm(mu, sd = tau)        # study effects
+  }
+  theta ~ dflat()        # effect of Avandia
+  # random effects hyperparameters
+  mu ~ dflat()
+  tau ~ dunif(0, 100)
 })
 ```
 
@@ -72,7 +76,7 @@ Let's run a basic MCMC.
 ```{r, mcmc, fig.cap='', fig.width=12, fig.height=5}
 samples <- nimbleMCMC(code = codeParam, data = data, inits = inits, 
                       constants = constants, monitors = c("mu", "tau", "theta", "gamma"),
-                      thin = 10, niter = 21000, nburnin = 1000, nchains = 1, setSeed = TRUE)
+                      thin = 10, niter = 11000, nburnin = 1000, nchains = 1, setSeed = TRUE)
 gammaCols <- grep('gamma', colnames(samples))
 
 par(mfrow = c(1, 4))
@@ -80,7 +84,7 @@ ts.plot(samples[ , 'theta'], xlab = 'iteration', ylab = expression(theta))
 hist(samples[ , 'theta'], xlab = expression(theta), main = 'effect of Avandia')
 gammaMn <- colMeans(samples[ , gammaCols])
 hist(gammaMn, xlab = 'posterior means of random effects', main = 'random effects distribution')
-hist(samples[1000, gammaCols], xlab = 'single draw of random effects',
+hist(samples[500, gammaCols], xlab = 'single draw of random effects',
                    main = 'random effects distribution')
 ```
 
@@ -117,21 +121,19 @@ Some considerations for model selection criteria:
 
 # Why not DIC
 
-Lots of reasons to avoid DIC:
-
  - Limited theoretical justification
  - DIC values are different for different parameterizations of the same model
  - Based on posterior mean so full posterior not used 
 
 # WAIC: some details
 
-WAIC tries to estimate the expected log pointwise predictive density for a new dataset:
+WAIC tries to estimate the expected pointwise log predictive density for a new dataset, $\{\tilde{y}_i\}:
 
-$$ \sum_{i=1}^n E(\log p_{post}(\tilde{y}_i)) $$
+$$ \sum_{i=1}^n E_{\tilde{y}}(\log p_{post}(\tilde{y}_i)) $$
 
 Two quantities are used:
 
-  1) $$ \sum_{i=1}^n \log \left(\frac{1}{M} \sum_{j=1}^M p(y_i | \theta^(j) )$$
+  1) Pointwise log predictive density in-sample: $\sum_{i=1}^n \log \left(\frac{1}{M} \sum_{j=1}^M p(y_i | \theta^{(j)} \right)$
   2) An estimate of the effective number of parameters (number of unconstrained parameters)
 
 The second piece adjusts for the bias from overfitting.
@@ -146,7 +148,7 @@ parameters, including random effects.
 ```{r, waic}
 outputFull <- nimbleMCMC(code = codeParam, data = data, inits = inits,
                       constants = constants, monitors = c("mu", "tau", "gamma", "theta"), 
-                      thin = 10, niter = 21000, nburnin = 1000, nchains = 1, 
+                      thin = 10, niter = 11000, nburnin = 1000, nchains = 1, 
                       setSeed = TRUE, WAIC = TRUE)
 
 codeParamReduced <- nimbleCode({
@@ -164,11 +166,11 @@ codeParamReduced <- nimbleCode({
 
 outputReduced <- nimbleMCMC(code = codeParamReduced, data = data, inits = inits,
                       constants = constants, monitors = c("mu", "tau", "gamma"),
-                      thin = 10, niter = 21000, nburnin = 1000, nchains = 1, 
+                      thin = 10, niter = 11000, nburnin = 1000, nchains = 1, 
                       setSeed = TRUE, WAIC = TRUE)
 ```
 
-## WAIC results
+# WAIC results
 
 Interpreting the numerical values -- WAIC is on the deviance scale:
 
@@ -185,26 +187,27 @@ The better WAIC for the full model is not suprising given what we saw in the pos
 
 # WAIC can be tricky
 
- - There are different variations on WAIC depending on what predictive distribution is of interest*. E.g.,
+ - There are different variations on WAIC depending on what predictive distribution is of interest. E.g.,
  
     - New observations
     - New groups (often represented as a new random effect)
  - The variation used depends on what is monitored in the MCMC (because we need samples of everything considered a parameter)
-    - Often you want to monitor all parameters, which is NOT the NIMBLE default.
+    - For new observations, you want to monitor all parameters, which is NOT the NIMBLE MCMC default.
 
  - WAIC relies on being able to partition the data into `n` pieces; not clear how to use for spatial or temporally-correlated data
 
-* See Gelman, A., J. Hwang, and A. Vehtari. 2014. “Understanding Predictive Information Criteria for Bayesian Model.” Statistics and Computing 24 (6): 997–1016.
+* See Gelman, A., J. Hwang, and A. Vehtari. 2014. “Understanding Predictive Information Criteria for Bayesian Models.” Statistics and Computing 24 (6): 997–1016.
 
 # Introduction to Bayesian variable selection
 
 - You have many candidate explanatory variables.
 - Bayesian approach is to have a probability that a variable is included in the model.
-- Really this is a probability that the coefficient is $\ne 0$.
+- Really this is a probability that the regression coefficient is $\ne 0$.
 - BUGS/JAGS implementation is with indicator variables.
 
 ```
   linear_predictor[i] <- beta0 + ind * beta1 * x[i]
+  ind ~ dbern(pi)
 ```
 
 - This has problems: when `ind` is 0, `beta1` follows its prior, until it hits a reasonable value for `beta1` that allows `ind` equal to 1 to be accepted.
@@ -222,11 +225,9 @@ The better WAIC for the full model is not suprising given what we saw in the pos
 
 Recall that we had the Avandia effect in the meta-analysis. Let's see if the Avandia effect is needed in the model using Bayesian variable selection.
 
-# RJMCMC for variable selection in nimble
+# RJMCMC for variable selection in NIMBLE: example
 
 To use reversible jump, we need to rework the code slightly to represent the Avandia effect in terms of a (binary) covariate:
-
-- Update an MCMC configuration to use RJMCMC.
 
 
 ```{r, meta-rjmcmc-setup}
@@ -250,12 +251,18 @@ full_n <-  c(dat$nControl, dat$nAvandia)
 nObs <- 2*nrow(dat)
 data2 <- list(full_y = full_y)
 constants2 = list(full_n = full_n, study = rep(1:nStudies, 2), 
-                 nObs = nObs, avandia = avandia)
+                 nObs = nObs, avandia = avandia, nStudies = nStudies)
 
 model2 <- nimbleModel(code = codeParam2, data = data2, inits = inits, constants = constants2)
 cModel2 <- compileNimble(model2)
+```
 
-conf2 <- configureMCMC(model, monitors = c("mu", "tau", "theta", "gamma"))
+# Setting up variable selection
+
+We simply modify a standard MCMC configuration.
+
+```{r}
+conf2 <- configureMCMC(model2, monitors = c("mu", "tau", "theta", "gamma"))
 configureRJ(conf2,
             targetNodes = 'theta',
             priorProb = 0.5,
@@ -285,13 +292,12 @@ mean(resultsVarSel[ , 'theta'] != 0)
 
 - Mixing will generally be better than simply using an indicator function without RJMCMC.
 - One can use RJ for variable selection in NIMBLE either with or without indicator functions.
-   - Use of indicator functions allows for hierarchical structure for selection of multiple variables*.
-- Adaptation for coefficient samplers only occurs when the coefficient is "in the model".
+   - Use of indicator functions allows for hierarchical structure for selection of multiple variables (see below).
+- Sampling of the coefficient only occurs when the coefficient is "in the model".
 - Run time should be much faster *if* posterior probability of inclusion is not large. 
 - Tuning parameter of RJ proposal scale (sd) must be chosen.
 
-
-* Hierarchical variable selection:
+Hierarchical variable selection:
 
  - Suppose one has many (e.g., hundreds, thousands or more) potential covariates, such as genes in gene association studies.
  - Instead of fixing the probability each gene is associated with the outcome, learn a parameter that is the probability that any given gene is associated with the outcome.
@@ -304,7 +310,10 @@ Consider the Avandia analysis. We assumed the random effects were normally distr
  - Is that reasonable?
  - If not, is the inference for the Avandia effect robust?
 
-Note that we can try to answer the first question from the parametric fit: The estimated distributions seem skewed PLUS these are generated under the normality assumption!
+Note that we can try to answer the first question from the parametric fit: 
+
+ - The estimated distributions seem skewed 
+ - PLUS these are generated under the normality assumption!
 
 What are some approaches we could use to reduce the assumptions built into the normal distribution? I.e., how can we make the model more flexible? 
 
@@ -336,7 +345,9 @@ $$ \frac{n_k}{i-1+\alpha} $$
 
 The discreteness of the DP/CRP is good for clustering but bad for representing continuous distributions (like what we would want for the meta analysis).
 
-Instead, we use the DP combined with a standard mixture modeling approach, such as a mixture of normal distributions. The CRP clusters observations (in our case random effects) to mixture components.
+Instead, we use the DP combined with a standard mixture modeling approach, such as a mixture of normal distributions. The CRP clusters observations (in our case Avandia study random effects) to mixture components.
+
+
 
 # DP-based random effects modeling for meta analysis
 
@@ -357,33 +368,33 @@ codeBNP <- nimbleCode({
   # mixture component parameters drawn from base measures
   # should think carefully about priors here
   for(i in 1:nStudies) {
-    muTilde[i] ~ dnorm(mu0, sd = 1)
+    muTilde[i] ~ dnorm(-6, sd = 1)  # based on parametric fit (slightly cheating...)
     tauTilde[i] ~ dinvgamma(2, 1)
   }
   # CRP for clustering studies to mixture components
   xi[1:nStudies] ~ dCRP(conc, size = nStudies)
   # hyperparameters
   conc ~ dgamma(1, 1)      # 'alpha' in the CRP discussion
-  mu0 ~ dnorm(0, 1.6)       # plays the role of the intercept -- approx. uniform baseline (transformed) probability of MI
   theta ~ dflat()          # effect of Avandia
 })
 ```
 
-The specification is a bit complicated, but just think of it as a nonparametric extension to a mixture of normal distributions as the random effects distribution for $\gamma[i]$, but where we don't fix the maximum number of components.
+The specification is a bit complicated, but just think of it as a nonparametric extension to a mixture of normal distributions as the random effects distribution for $\gamma_i$, but where we don't fix the maximum number of components.
 
 Note that the choice of the priors for the mixture component parameters can be tricky; same for the concentration parameter of the CRP clustering process. In general, overly flat priors will put a lot of prior weight on extreme random effects values. 
 
 # Running an MCMC for the DP-based meta analysis
 
 ```{r, DP-MCMC, fig.cap='', fig.width=12, fig.height=5}
+set.seed(1)
 inits <- list(gamma = rnorm(nStudies), xi = sample(1:2, nStudies, replace = TRUE),
-              conc = 1, mu0 = 0, theta = 0,
+              conc = 1, theta = 0,
               muTilde = rnorm(nStudies), tauTilde = rep(1, nStudies))
 
 samplesBNP <- nimbleMCMC(code = codeBNP, data = data, inits = inits,
                          constants = constants,
-                         monitors = c("theta", "gamma", "conc", "xi", "mu0"),
-                         thin = 10, niter = 21000, nburnin = 1000, nchains = 1, setSeed = TRUE)
+                         monitors = c("theta", "gamma", "conc", "xi"),
+                         thin = 10, niter = 10000, nburnin = 0, nchains = 1)
 
 gammaCols <- grep('gamma', colnames(samplesBNP))
 xiCols <- grep('xi', colnames(samplesBNP))
@@ -403,7 +414,7 @@ nGrps <- apply(xiRes, 1, function(x) length(unique(x)))
 ts.plot(nGrps, xlab = 'iteration', ylab = 'number of components')
 ```
 
-Conclusions: the primary inference seems robust, and there's also not much evidence of multiple components.
+Conclusions: the primary inference seems robust, and there's also little evidence of multiple components.
 
 What samplers are being used? `nimbleMCMC` doesn't tell us, but we could configure the default MCMC to see:
 
@@ -414,7 +425,18 @@ conf = configureMCMC(model, print = TRUE)
 
 # BNP: more details
 
- - We also provide tools for using the stick-breaking representation of a Dirichlet process model
- - In our next version (0.10.0) we'll provide more flexibility for treating each 'observation' that is clustered as having multiple values 
-   - E.g., clustering time series without having to use multivariate distributions
- - `getSamplesDPmeasure()` will transform the MCMC output to give samples from the unknown density
+ - We also provide tools for using the stick-breaking representation of a Dirichlet process model.
+ - In the next nimble version (0.10.0) we'll provide more flexibility for clustering multiple values at a time.
+   - E.g., clustering time series without having to use multivariate distributions.
+ - `getSamplesDPmeasure()` will transform the MCMC output to give samples from the unknown density.
+ 
+# What happened with Avandia?
+
+The FDA ended up [strongly discouraging use](https://www.fda.gov/drugs/drug-safety-and-availability/fda-drug-safety-communication-avandia-rosiglitazone-labels-now-contain-updated-information-about)
+
+# Exercise
+
+1) Run WAIC for the BNP-based model for comparison with the models we already considered with WAIC.
+
+2)
+
