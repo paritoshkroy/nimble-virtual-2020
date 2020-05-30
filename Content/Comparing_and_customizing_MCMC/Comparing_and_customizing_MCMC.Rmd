@@ -1,7 +1,7 @@
 ---
 title: "Comparing and customizing MCMC in `nimble`"
-author: "Perry de Valpine"
-date: "June 2020"
+author: "NIMBLE Development Team"
+date: "NIMBLE virtual workshop. June 2020"
 output:
   slidy_presentation: default
   beamer_presentation: default
@@ -17,12 +17,19 @@ slides > slide {
 ```{r loadLibs, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,
                       cache = TRUE)
-doMCMC <- FALSE
+doMCMC <- TRUE
 library(nimble)
 if(!require(mvtnorm))
   warning("This Rmd file needs package mvtnorm.")
 if(!require(coda))
   warning("This Rmd file needs package coda")
+has_compareMCMCs <- require(compareMCMCs)
+if(!has_compareMCMCs)
+  warning("This Rmd file uses package compareMCMCs from github.  Sections using it will be skipped.")
+has_rjags <- require(rjags)
+if(!has_rjags)
+  warning("This Rmd file uses package rjags.  Sections using it will be skipped.")
+doComparisons <- FALSE
 ```
 
 
@@ -169,7 +176,7 @@ An *MCMC kernel* comprises one or more samplers that define $P(\theta^{(k+1)} | 
 - Informally, today, "an MCMC" = "an MCMC kernel".
 - An *MCMC sampler* updates one or more dimensions of $\theta$.
 - Samplers are sometimes called "updaters".
-- Kernels are sometimes called "samplers" This is reasonable (because a sampler is a kernel for its dimension(s)), but confusing. Today:
+- Kernels are sometimes called "samplers". This is reasonable (because a sampler is a kernel for its dimension(s)), but confusing. Today:
     - An MCMC (kernel) comprises one or more samplers.
     - An MCMC samples all desired dimensions (parameters or states).
     - A sampler samples a subset of desired dimensions.
@@ -195,6 +202,12 @@ mcmcConf <- configureMCMC(DEmodel1)
 mcmcConf$printSamplers()
 ```
 
+This is a list of sampler assignments.  It does not contain the samplers themselves.
+
+It's the list of parts we plan to assemble for the MCMC machine.  It is not the machine itself.
+
+We can modify the list of parts before we build the MCMC machine.
+
 MCMC efficiency
 =====
 
@@ -203,9 +216,9 @@ Mixing and computation time are both important to MCMC performance.
 Let's get an MCMC sample for the E. cervi example.
 
 ```{r runMCMC, eval=doMCMC}
-mcmcConf$addMonitors("farm.effect")
+mcmcConf$addMonitors("farm.effect") # By default, top-level parameters are monitored. Let's get these random effects too.
 DEmcmc1 <- buildMCMC(mcmcConf)
-compiled <- compileNimble(DEmodel1, DEmcmc1)
+compiled <- compileNimble(DEmodel1, DEmcmc1) # Example of compiling model and MCMC in one call, which returns a list.
 DEsamples <- runMCMC(compiled$DEmcmc1, niter = 10000, nburnin = 1000)
 ```
 
@@ -217,6 +230,8 @@ Mixing and computation time are both important to MCMC performance.
 *Do not get excited about an MCMC just because it runs quickly.*
 
 Mixing refers to how "quickly" (per iteration, not clock time) the MCMC moves around the posterior ("target distribution").
+
+Lots of MCMC theory ignores computational cost and focuses on mixing.
 
 Let's see better vs. worse mixing:
 ```{r plot-samples, eval=doMCMC}
@@ -232,13 +247,13 @@ independent samples in an MCMC chain for one parameter.
 
 ### What does "equivalent number of independent samples" mean?
 
-- If `p[i]` were drawn independently (m samples), we could say:
+- If $m$ samples from the posterior of a scalar parameter were drawn *independently*, $\theta^{(k)}$, $k = 1\ldots m$.
 
-$\mbox{Var}[\overline{p[i]}] = \mbox{Var}[ \frac{1}{m} \sum_{i = 1}^m p[i] ]= \frac{\mbox{Var} \left[ p[i] \right]}{m}$
+$\mbox{Var}\left[ \bar{\theta} \right] = \mbox{Var}\left[ \frac{1}{m} \sum_{k=1}^m \theta^{(k)} \right] = \frac{\mbox{Var} \left[ \theta \right] }{m}$
 
-- Instead, we have
+- Instead, samples are sequentially non-independent, and we have
 
-$\mbox{Var}[\overline{p[i]}] = \frac{\mbox{Var}[p \left[i] \right]}{\mbox{ESS}}$
+$\mbox{Var}\left[ \bar{\theta} \right] = \frac{\mbox{Var} \left[ \theta \right] }{\mbox{ESS}}$
 
 where ESS is the *Effective Sample Size*.
 
@@ -256,14 +271,14 @@ effectiveSize(DEsamples)
 
 We can see that the ESS is considerably smaller than the number of samples.
 
-MCMC Efficiency (as the parameter level)
+MCMC Efficiency (at the parameter level)
 =====
 
 MCMC efficiency = $\frac{\mbox{effective sample size (ESS)}}{\mbox{computation time}}$
 
 - This is the number of effectively independent samples generated per time (second).
 - ESS is different for every parameter.
-- MCMC Pace = 1 / MCMC Efficiency
+- MCMC Pace = 1 / MCMC Efficiency, the time (in seconds) needed to generate one effectively independent sample.
 - Computation time is the same for every parameter: the total time.
 - We do not count setup steps like model building and compilation as
   part of computation time. We are more interested in the final MCMC
@@ -323,6 +338,8 @@ llh_surface_given_slope <- apply(matrix(intercept_grid_given_slope), 1,
 
 Choosing a new value depends only on **ratios** of the surface.
 
+The surface is the "model calculations".
+
 How MCMC works: calculations for a sampler
 =====
 
@@ -345,6 +362,8 @@ The needed ratio for many methods is
 
 Conclusion: only the part of $[Y, \theta]$ that involves a particular parameter(s) needs to be calculated.
 
+Code: If $\theta_1$ is `target <- 'theta[1]'`, the nodes needing calculation are obtained by `model$getDependencies(target)`.
+
 Different methods require different numbers of calculations of $[Y, \theta]$, so some are slow and some are fast.
 
 Some methods also use derivatives of $[Y, \theta]$.  (These aren't in `nimble` yet but will be in the future.)
@@ -354,7 +373,7 @@ Gibbs (conjugate) samplers
 =====
 
 - Possible when we can write $[\theta_1 | \theta_F, Y]$ analytically.
-- This only works for particular prior-posterior combinations.
+- This only works for particular (*conjugate*) prior-posterior combinations.
 - Despite sounding simple, there is some computational cost (different than shown above).
 - Both JAGS and nimble use conjugate samplers by default when available.
 - We will not spend more time on these.
@@ -389,8 +408,8 @@ nextTargetDist <- 0.03 * dnorm(theta1, 2.4, 0.2)
 }
 ```
 
-- Current value the parameter is $\theta_1$.
-- Propose a new value $\theta_1' \sim N(\theta, \nu)$ (blue).  This is centered on the current value, so we call it a "random walk".
+- Current value of the parameter is $\theta_1$.
+- Propose a new value (red asterisk) $\theta_1' \sim N(\theta, \nu)$ (blue distribution).  This is centered on the current value, so we call it a "random walk".
 - How to accept or reject $\theta_1'$?
      - Calculate ratio of $[Y, (\theta_1', \theta_F)] / [Y, (\theta_1, \theta_F)]$ (using only needed factors). 
      - If the ratio is $\gt 1$, accept $\theta'$.
@@ -404,6 +423,7 @@ nextTargetDist <- 0.03 * dnorm(theta1, 2.4, 0.2)
      - one evaluation of $[Y, (\theta_1', \theta_F)]$ (ditto) and some copying to save previous values.
 - How to choose $\nu$? 
      - By "adaptation".  The algorithm increases or decreases $\nu$ to achieve theoretically derived optimal accpetance rate.  
+- Remember that the target distribution may change on the next iteration (goldenrod distribution) because $\theta_F$ may have been updated.
 - Generalizes to multivariate (block) sampling.
 - This method is computationally cheap but may or may not mix well.
 
@@ -462,9 +482,9 @@ sliceLegend <- function() {
 }
 ```
 
-- Based on current $\theta_1$, pick an auxiliary "height" (uniform draw).
-- Determine lower and upper bounds for $\theta_1$ as shown.
-- Draw new value of $\theta_1$ uniformly between those bounds.
+- Based on current $\theta_1$, pick an auxiliary "height" by a uniform draw (purple triangle).
+- Determine lower and upper bounds for $\theta_1$ as shown (blue line between '+'s).
+- Draw new value of $\theta_1$ (red asterisk) uniformly between those bounds.
 
 
 ```{r, echo=FALSE}
@@ -503,7 +523,9 @@ Slice sampling computational costs
 - Determining the lower and upper bounds is not simple!
 - The target distribution changes every time (due to updating of other parameters).
 - Bounds must be determined by "stepping out" until the target height is below the chosen level (blue).
+    - It is ok to overshoot but then some uniform draws for the new value (blue line) may need to be discarded (after calculations determine they are outside the value range).
 - Computational cost can be *many* evaluations of $[Y, (\theta_1, \theta_F)]$ (again, only the necessary factors).
+- Mixing might typically be better than adaptive random-walk Metropolis-Hastings, but at high computational cost.
 
 Multivariate random-walk Metropolis-Hastings samplers
 =====
@@ -518,14 +540,14 @@ Multivariate random-walk Metropolis-Hastings samplers
 
 - Adaptation must determine good scale and correlations for proposals.  Finding these can be slow.
 
-- May work well for a small number of correlated dimensions.
+- More important for dimensions with high posterior correlation.
 
-- If posterior dimensions are only weakly correlated, it is usually better to alternate dimensions.
+- If posterior dimensions are only weakly correlated, it is usually better to alternate dimensions with scalar samplers.
 
 - Computational cost depends on which parts of $[Y, \theta]$ are needed.
 
     - Some parameters might share the same calculations.
-    - Some parameters might require different calculations.
+    - Some parameters might require different calculations, in which case the block sampler will need to calculate their union.
 
 - May not work well when the scale of interest for different dimensions is very different.
 
@@ -535,13 +557,15 @@ Multivariate random-walk Metropolis-Hastings samplers
 Multivariate slice samplers
 =====
 
+* Automated factor slice sampler of [Tibbits et al. (2014)](https://www.tandfonline.com/doi/abs/10.1080/10618600.2013.791193)
+
 * Choose new parameter axes (still orthogonal).
 
     - Think of principal components analysis (PCA) for an analogy.
     - You can think of these as rotated parameter coordinates.
     - You can think of these as linear combinations of parameters.
     
-* Use a slice sampler in the new parameter axes.
+* Use a slice sampler in each of the new parameter axes.
 
 * Adaptation needs to discover good axes.
 
@@ -583,7 +607,212 @@ These samplers will be supported in `nimble` in the coming year.  They work now 
 Modifying an MCMC configuration in `nimble`
 =====
 
+Let's replace RW (adaptive random-walk Metropolis-Hastings) samplers with slice samplers in the E. cervi example.
+
+```{r, eval=doMCMC}
+DEmodel1b <- DEmodel1$newModel(replicate = TRUE) # Fresh copy (in case code is used out of order in this doc)
+mcmcConf <- configureMCMC(DEmodel1b)
+params_for_slice <- "farm.effect[1:6]" # Notice: Not just one node
+mcmcConf$printSamplers(params_for_slice)
+mcmcConf$removeSamplers(params_for_slice) # Nodes will be expanded
+expanded_params_for_slice <- DEmodel1b$expandNodeNames(params_for_slice)
+expanded_params_for_slice
+for(p in expanded_params_for_slice)
+  mcmcConf$addSampler(target = p,
+                      type = "slice")
+mcmcConf$printSamplers(params_for_slice)
+mcmc <- buildMCMC(mcmcConf)
+compiled <- compileNimble(DEmodel1b, mcmc)
+samples <- runMCMC(compiled$mcmc, niter = 10000, nburnin = 1000)
+effectiveSize(samples)
+```
 
 Using `compareMCMCs`
 =====
+
+`compareMCMCs` is the name of a nearly complete R package available on github for managing performance comparisons among MCMC methods, particularly in `nimble`.  It can also run other MCMC "engines" via a plug-in system.  Currently there is a plug-in for JAGS and a draft plug-in for Stan.  Plug-ins for JAGS and OpenBUGS/WinBUGS (not yet implemented) can use the same model as `nimble` if it is compatible.
+
+`compareMCMCs` is the name of a deprecated function in nimble.  It wrapped calls to a lower-level function called `MCMCsuite`.   The new `compareMCMCs` package is a re-designed, re-written take on the goal of managing comparisons among MCMC methods.
+
+We will illustrate `compareMCMCs` by example.
+
+Using `compareMCMCs`
+=====
+
+Say we want to compare a variety of sampling ideas:
+
+1. Default (built-in)
+2. Slice sampling on all nodes (built-in)
+3. RW block sampling on each (sex-specific) pair of (slope, intercept) parameters.
+4. Automated factor slice sampling on the (slope, intercept) pairs.
+5. JAGS
+
+We will use the following models:
+
+1. Same as above but without centering `Length` (just to make the blocking more interesting in this simple example)
+2. Same as above but written with precision parameterization for `dnorm`s for JAGS.
+
+Writing MCMC configuration functions for `compareMCMCs`
+=====
+There are several ways to provide custom MCMC configurations to `compareMCMCs`.  Here is the easiest.
+
+```{r}
+nimbleMCMCdefs = list(
+  nimble_RWblock = function(model) { # Input should be a model
+    mcmcConf <- configureMCMC(model)
+    mcmcConf$removeSamplers(c('sex.effect','length.effect'))
+    mcmcConf$addSampler(target = c('sex.effect[1]', 'length.effect[1]'),
+                        type = "RW_block",
+                        control = list(adaptInterval = 20, tries = 2))
+    mcmcConf$addSampler(target = c('sex.effect[2]', 'length.effect[2]'),
+                        type = "RW_block",
+                        control = list(adaptInterval = 20, tries = 2))
+    mcmcConf                         # Output should be an MCMC configuration 
+  },
+  nimble_AFSSblock = function(model) {
+    mcmcConf <- configureMCMC(model)
+    mcmcConf$removeSamplers(c('sex.effect','length.effect'))
+    mcmcConf$addSampler(target = c('sex.effect[1]', 'length.effect[1]'),
+                        type = "AF_slice",
+                        control = list(sliceAdaptFactorInterval = 20))
+    mcmcConf$addSampler(target = c('sex.effect[2]', 'length.effect[2]'),
+                        type = "AF_slice",
+                        control = list(sliceAdaptFactorInterval = 20))
+    mcmcConf                         # Output should be an MCMC configuration 
+  }
+)
+```
+
+Example models for `compareMCMCs`
+=====
+
+Artifically un-center length to make blocking more interesting
+```{r}
+DEconstants_uncentered <- DEconstants # Artificially un-center Length
+DEconstants_uncentered$cLength <- DeerEcervi$Length # cLength is now mis-named, but it's easier than new model code.
+```
+
+Make a version compatible with JAGS
+```{r}
+DEcode2 <- nimbleCode({
+  for(i in 1:2) {
+    length.effect[i] ~ dnorm(0, 1.0E-6) # precisions
+    sex.effect[i] ~ dnorm(0, 1.0E-6)
+  }
+  farm.sd ~ dunif(0, 20)
+  farm.precision <- 1/(farm.sd*farm.sd)
+
+  for(i in 1:num.farms) {
+    farm.effect[i] ~ dnorm(0, farm.precision) # precision
+  }
+
+  for(i in 1:num.animals) {
+    logit(disease.probability[i]) <- 
+      sex.effect[ sex[i] ] +
+      length.effect[ sex[i] ]*cLength[i] +
+      farm.effect[ farm.ids[i] ]
+    Ecervi.01[i] ~ dbern(disease.probability[i])
+  }
+})
+```
+
+Call `compareMCMCs` for nimble cases (centered)
+=====
+```{r, eval = (has_compareMCMCs&doComparisons)}
+set.seet(123)
+DEinits_vals <- DEinits1()
+mcmcResults_nimble_centered <- compareMCMCs(
+  modelInfo = list(code = DEcode1, 
+                   data = list(Ecervi.01 = DeerEcervi$Ecervi.01),
+                   constants = DEconstants, # centered
+                   inits = DEinits_vals),
+  ## monitors ## Use default monitors: top-level parameters
+  MCMCs = c('nimble',
+            'nimble_slice',
+            'nimble_RWblock',    # Name matches nimbleMCMCdefs list name
+            'nimble_AFSSblock'), # Ditto
+  nimbleMCMCdefs = nimbleMCMCdefs,
+  MCMCcontrol = list(niter = 20000, burnin = 1000)
+)
+```
+
+Call `compareMCMCs` for JAGS (centered)
+=====
+We could have included `jags` in the `MCMCs` argument if the previous model was JAGS-compatible, but it wasn't.
+
+```{r, include=FALSE}
+mcmcResults_jags_centered <- list()
+```
+
+```{r, eval=(has_rjags&doComparisons)}
+mcmcResults_jags_centered <- compareMCMCs(
+  modelInfo = list(code = DEcode2, # JAGS-compatible
+                   data = list(Ecervi.01 = DeerEcervi$Ecervi.01),
+                   constants = DEconstants, # centered
+                   inits = DEinits_vals),
+  ## monitors ## Use default monitors: top-level parameters
+  MCMCs = c('jags'),
+  MCMCcontrol = list(niter = 20000, burnin = 1000)
+)
+```
+
+Combine and visualize results (centered)
+=====
+
+```{r, eval=doComparisons}
+mcmcResults_centered <- c(mcmcResults_nimble_centered, mcmcResults_jags_centered) ## These are lists of MCMCresult objects
+make_MCMC_comparison_pages(mcmcResults_centered, modelName = "Deer_Ecervi_centered")
+```
+
+Results are [here](Deer_Ecervi_centered.html).
+
+Call `compareMCMCs` for nimble cases (uncentered)
+=====
+```{r, eval = (has_compareMCMCs&doComparisons)}
+set.seet(123)
+DEinits_vals <- DEinits1()
+DEinits_vals_uncentered <- DEinits_vals
+DEinits_vals_uncentered$sex.effect <- c(-8, -8)
+mcmcResults_nimble_uncentered <- compareMCMCs(
+  modelInfo = list(code = DEcode1, 
+                   data = list(Ecervi.01 = DeerEcervi$Ecervi.01),
+                   constants = DEconstants_uncentered,
+                   inits = DEinits_vals_uncentered),
+  ## monitors ## Use default monitors: top-level parameters
+  MCMCs = c('nimble',
+            'nimble_slice',
+            'nimble_RWblock',    # Name matches nimbleMCMCdefs list name
+            'nimble_AFSSblock'), # Ditto
+  nimbleMCMCdefs = nimbleMCMCdefs,
+  MCMCcontrol = list(niter = 50000, burnin = 5000)
+)
+```
+
+Call `compareMCMCs` for JAGS (uncentered)
+=====
+
+```{r, include=FALSE}
+mcmcResults_jags_uncentered <- list()
+```
+
+```{r, eval=(has_rjags&doComparisons)}
+mcmcResults_jags_uncentered <- compareMCMCs(
+  modelInfo = list(code = DEcode2, # JAGS-compatible
+                   data = list(Ecervi.01 = DeerEcervi$Ecervi.01),
+                   constants = DEconstants_uncentered, # centered
+                   inits = DEinits_vals_uncentered),
+  ## monitors ## Use default monitors: top-level parameters
+  MCMCs = c('jags'),
+  MCMCcontrol = list(niter = 50000, burnin = 5000)
+)
+```
+Combine and visualize results (uncentered)
+=====
+
+```{r, eval=doComparisons}
+mcmcResults_uncentered <- c(mcmcResults_nimble_uncentered, mcmcResults_jags_uncentered) ## These are lists of MCMCresult objects
+make_MCMC_comparison_pages(mcmcResults_uncentered, modelName = "Deer_Ecervi_uncentered")
+```
+
+Results are [here](Deer_Ecervi_uncentered.html).
 
