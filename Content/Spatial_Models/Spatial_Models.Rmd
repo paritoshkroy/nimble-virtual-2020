@@ -429,23 +429,23 @@ conf$addSampler('x[1:134]', 'RW_block', control = list(adaptFactorExponent = 0.2
 
 MCMC <- buildMCMC(conf)
 cMCMC <- compileNimble(MCMC, project = cModel)
-samples <- runMCMC(cMCMC, niter = 15000, nburnin = 5000, thin = 10)
+samples <- runMCMC(cMCMC, niter = 30000, nburnin = 5000, thin = 25)
 ```
 
 Note that mixing in this model is somewhat slow, because of the need to explore the correlated spatial process, `x`, which is generally less effective in non-conjugate settings, such as this one, where the observations are Poisson and the prior for the latent process is normal.
 
 # Results
 
-MCMC mixing looks pretty good (not always the case for spatial models).
+MCMC mixing could be better (often the case for spatial models), but is not terrible. We'd want to run for longer.
 
 ```{r, fig.cap='', fig.width=10, fig.height=6}
 par(mfrow = c(2,3))
-ts.plot(samples[ , 'rho'])
-ts.plot(samples[ , 'sigma'])
-ts.plot(samples[ , 'beta'])
-ts.plot(samples[ , 'x[5]'])
-ts.plot(samples[ , 'x[50]'])
-ts.plot(samples[ , 'x[100]'])
+ts.plot(samples[ , 'rho'], main = 'rho')
+ts.plot(samples[ , 'sigma'], main = 'sigma')
+ts.plot(samples[ , 'beta'], main = 'beta')
+ts.plot(samples[ , 'x[5]'], main = 'x[5]')
+ts.plot(samples[ , 'x[50]'], main = 'x[50]')
+ts.plot(samples[ , 'x[100]'], main = 'x[100]')
 ```
 
 We can look at the map of the estimated relative risks. Note the scale is very different than of the standardized mortality ratio raw values.
@@ -589,12 +589,14 @@ samples <- runMCMC(cMCMC, niter = 100000, nburnin = 20000, thin = 80)
 
 Mixing is decent (though that was a pretty long run). It would be worth exploring further to understand the posterior correlation structure and consider other sampling strategies.
 
-```{r, fig.cap='', fig.width=10, fig.height=5}
-par(mfrow = c(1,4))
-ts.plot(samples[ , 'lambda[1]'])
-ts.plot(samples[ , 'lambda[2]'])
-ts.plot(samples[ , 'x[20]'])
-ts.plot(samples[ , 'x[40]'])
+```{r, fig.cap='', fig.width=12, fig.height=6}
+par(mfrow = c(2,3))
+ts.plot(samples[ , 'lambda[1]'], main = 'lambda[1]')
+ts.plot(samples[ , 'lambda[2]'], main = 'lambda[2]')
+ts.plot(samples[ , 'beta_z'], main = 'beta_z')
+ts.plot(samples[ , 'x[5]'], main = 'x[5]')
+ts.plot(samples[ , 'x[50]'], main = 'x[50]')
+ts.plot(samples[ , 'x[100]'], main = 'x[100]')
 ```
 
 Here are the spatial estimates. Pretty different than the CAR or GP results. We might want to explore larger values of K.
@@ -625,7 +627,7 @@ For example, Stoner and Economou (2020; https://arxiv.org/abs/1906.03846) used m
 # Appendix: using JAGS instead (for the spline-based model)
 
 For the spline-based or GP-based models (but not the CAR) you could use JAGS.
-I didn't do a thorough exploration but default NIMBLE MCMC and JAGS seemed similar, while modifying the RW_block sampler in NIMBLE improved mixing a lot.
+I didn't do a thorough exploration but default NIMBLE MCMC and JAGS seemed similar for the spline-based model (didn't try the GP in JAGS), while modifying the RW_block sampler in NIMBLE improved mixing a lot.
 
 ```
 library(rjags)
