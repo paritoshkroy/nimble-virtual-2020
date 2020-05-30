@@ -623,6 +623,12 @@ plot(respiratorydata_sp, col = col, border = 'grey', lwd = 0.4)
 
 For example, Stoner and Economou (2020; https://arxiv.org/abs/1906.03846) used mgcv-based spline terms in a NIMBLE model for precipitation, handling seasonality with cyclic splines.
 
+# Exercise
+
+
+Let's pull together setting up post-hoc posterior sampling of the latent process at unobserved locations, $x^*$. We'll continue to use the Scotland data, but it's artificial in that with areal data settings, one generally doesn't have new locations. But in more standard GP settings, this is a standard problem.
+
+FIXME: finish
 
 # Appendix: using JAGS instead (for the spline-based model)
 

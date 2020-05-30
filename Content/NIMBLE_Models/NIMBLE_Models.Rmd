@@ -10,7 +10,7 @@ output:
 
 ```{r setup, include=FALSE}
 library(nimble)
-DeerEcervi <- read.table('../Content/examples/DeerEcervi/DeerEcervi.txt', header = TRUE)
+DeerEcervi <- read.table('../examples/DeerEcervi/DeerEcervi.txt', header = TRUE)
 
 ## Create presence/absence data from counts.
 DeerEcervi$Ecervi.01 <- DeerEcervi$Ecervi
@@ -589,4 +589,8 @@ In this case, the model doesn't have much hierarchical structure.
 You may not know where there are lifted nodes.
 
 Always determine what to `calculate` or `simulate` from `getDependencies` or other such tools.
+
+# Exercise
+
+Please run through the code from this module and use the commands discussed to understand the nodes and dependency structure of the Deer example.
 

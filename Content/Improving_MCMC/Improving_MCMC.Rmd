@@ -10,7 +10,7 @@ output:
 ```{r setup, include=FALSE}
 library(nimble)
 
-DeerEcervi <- read.table('../../Data/DeerEcervi.txt', header = TRUE)
+DeerEcervi <- read.table('../examples/DeerEcervi/DeerEcervi.txt', header = TRUE)
 
 ## Create presence/absence data from counts.
 DeerEcervi$Ecervi.01 <- DeerEcervi$Ecervi
@@ -34,6 +34,10 @@ Some strategies for improving MCMC
     - Try sampling standard deviations on a log scale.
     - Try slice samplers instead of Metropolis-Hastings.
     - Try multiple samplers for slow-mixing parameters.
+ - Reparameterize
+    - Center covariates
+    - Centered versus non-centered random effects
+    - Rotated coordinates to reduce posterior correlation
  - (Advanced; tomorrow) Write new samplers that take advantage of particular model structures
  
  - Rewriting the model to reduce dependencies
@@ -332,3 +336,41 @@ cModel$calculate('farm.effect')
 ```
 
 FIXME: decide whether to actually run MCMC on these model variations
+
+# Exercise
+
+```{r}
+DEconstants <- list(num.farms = 24,
+                    num.animals = 826,
+                    cLength = DeerEcervi$cLength,
+                    sex = DeerEcervi$Sex,
+                    farm.ids = DeerEcervi$farm.ids)
+DEdata <- list(Ecervi.01 = DeerEcervi$Ecervi.01)
+
+DEinits <- function() {
+  list(sex.effect = c(0, 0), 
+       length.effect = c(0, 0),
+       farm.sd = 1,
+       farm.effect = rnorm(24, 0, 1) )       
+}
+
+set.seed(1)
+model <- nimbleModel(DEcode1, data = DEdata, constants = DEconstants)
+model$setInits(DEinits())
+cModel <- compileNimble(model)
+
+conf <- configureMCMC(model)
+conf$addMonitors('farm.effect')
+mcmc <- buildMCMC(conf)
+cmcmc <- compileNimble(mcmc, project = model)
+samples <- runMCMC(cmcmc, niter = 5000, nburnin = 0)
+
+conf <- configureMCMC(model)
+conf$addMonitors('farm.effect')
+mcmc <- buildMCMC(conf)
+cmcmc <- compileNimble(mcmc, project = model)
+samples <- runMCMC(cmcmc, niter = 5000, nburnin = 0)
+
+
+```
+
