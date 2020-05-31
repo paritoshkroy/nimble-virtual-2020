@@ -1,5 +1,5 @@
 ---
-title: "Model selection/comparison/expansion topics: Variable selection, WAIC, and Bayesian non-parametrics"
+title: "Model selection topics: Variable selection, WAIC, and Bayesian non-parametrics"
 subtitle: "NIMBLE 2020 Virtual Workshop"
 author: "NIMBLE Development Team"
 date: "June 2020"
@@ -134,13 +134,13 @@ Some considerations for model selection criteria:
 
 # WAIC: some details
 
-WAIC tries to estimate the expected pointwise log predictive density for a new dataset, $\{\tilde{y}_i\}:
+WAIC tries to estimate the expected pointwise log predictive density for a new dataset, $\{\tilde{y}_i\}$:
 
 $$ \sum_{i=1}^n E_{\tilde{y}}(\log p_{post}(\tilde{y}_i)) $$
 
 Two quantities are used:
 
-  1) Pointwise log predictive density in-sample: $\sum_{i=1}^n \log \left(\frac{1}{M} \sum_{j=1}^M p(y_i | \theta^{(j)} \right)$
+  1) Pointwise log predictive density in-sample: $\sum_{i=1}^n \log \left(\frac{1}{M} \sum_{j=1}^M p(y_i | \theta^{(j)}) \right)$
   2) An estimate of the effective number of parameters (number of unconstrained parameters)
 
 The second piece adjusts for the bias from overfitting.
@@ -445,5 +445,5 @@ The FDA ended up [strongly discouraging use](https://www.fda.gov/drugs/drug-safe
 
 1) Run WAIC for the BNP-based model for comparison with the models we already considered with WAIC.
 
-2) Set up a BNP generalization of the Deer example or in a model of your choice.
+2) Set up a BNP generalization of the E. cervi example or in a model of your choice.
 

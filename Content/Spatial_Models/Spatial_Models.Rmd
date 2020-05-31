@@ -107,7 +107,8 @@ So each $x_i$ is (in the prior) centered around the mean of its neighbors and wi
 Model code:
 
 ```
-x[1:N] ~ dcar_normal(adj[1:L], weights[1:L], num[1:N], tau, c, zero_mean)
+x[1:N] ~ dcar_normal(adj[1:L], weights[1:L], num[1:N], 
+                     tau, c, zero_mean)
 ```
 
 where
