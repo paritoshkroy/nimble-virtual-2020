@@ -4,9 +4,15 @@ subtitle: "NIMBLE 2020 Virtual Workshop"
 author: "NIMBLE Development Team"
 date: "June 2020"
 output:
-  html_document:
-    code_folding: show
+  slidy_presentation: default
+  beamer_presentation: default
 ---
+<style>
+slides > slide {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+</style>
 
 ```{r setup, include=FALSE}
 library(nimble)
@@ -596,7 +602,7 @@ Always determine what to `calculate` or `simulate` from `getDependencies` or oth
 
 2) Write code to fix the hyperparameters of the Deer example and given those fixed values, generate random farm effects and new observations, as would be needed for a simulation study:
 
-```{r}
+```{r, eval=FALSE}
 model$farm.sd <- 1
 model$sex.effect <- c(1.5, 2.5)
 model$length.effect <- c(0.3, 0.5)

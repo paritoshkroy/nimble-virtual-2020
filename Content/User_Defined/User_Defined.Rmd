@@ -2,10 +2,17 @@
 title: "User-defined distributions and functions"
 subtitle: "NIMBLE 2020 Virtual Workshop"
 author: "NIMBLE Development Team"
+date: "June 2020"
 output:
-  html_document:
-    code_folding: show
+  slidy_presentation: default
+  beamer_presentation: default
 ---
+<style>
+slides > slide {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+</style>
 
 ```{r setup, include=FALSE}
 library(nimble)
@@ -54,7 +61,8 @@ rnormmix2 <- nimbleFunction(
                  prob = double(), mean = double(1), sd = double(1)) {
     returnType(double(0))
     
-    ind <- dbinom(1, pi) + 1  # dbern not available for compilation
+    # Use of distributions in nimbleFunctions follows R parameterizations
+    ind <- rbinom(1, 1, prob) + 1  # dbern not available for compilation
     value <- rnorm(1, mean[ind], sd[ind])
     return(value)
   })
@@ -72,6 +80,20 @@ The User Manual also shows how you could write CDF ('p') and inverse CDF ('q') s
 For standard usage all you need is the density ('d') and (if simulation is needed in algorithms you'll use) simulation ('r') functions.
 
 If you'd like to allow for different parameterizations for your distribution, and other advanced features you can `register` the distribution with NIMBLE via `registerDistributions()` but in many cases (including this one) that is not necessary. NIMBLE will just find the distribution automatically.
+
+# Using the distribution
+
+In addition to using the distribution in model code, you can simply use the compiled or uncompiled distribution in R.
+
+```{r}
+crnormmix2 <- compileNimble(rnormmix2)
+
+set.seed(1)
+rnormmix2(1, prob = 0.1, mean = c(0, 100), sd = c(1, 1))
+
+set.seed(1)
+crnormmix2(1, prob = 0.1, mean = c(0, 100), sd = c(1, 1))
+```
 
 # User-defined functions: motivation
 
@@ -169,6 +191,15 @@ code <- nimbleCode({
     y[i] ~ dpois(lambda[i])
   }
 })
+
+N <- 134
+dists <- as.matrix(dist(runif(N)))
+model <- nimbleModel(code, constants = list(N = N, dists = dists, ones = rep(1, N)), 
+                     inits = list(rho = 1, sigma = 1, mu0 = 0))
+deps <- model$getDependencies(c('rho','mu0','sigma'), self = FALSE)
+deps
+model$simulate(deps)  # may be a bit slow uncompiled given the nested looping
+range(model$x)
 ```
 
 # Vectorization within the function?
