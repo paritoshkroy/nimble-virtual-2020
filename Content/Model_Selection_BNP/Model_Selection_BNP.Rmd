@@ -414,7 +414,7 @@ nGrps <- apply(xiRes, 1, function(x) length(unique(x)))
 ts.plot(nGrps, xlab = 'iteration', ylab = 'number of components')
 ```
 
-Conclusions: the primary inference seems robust, and there's also little evidence of multiple components.
+Conclusions: the primary inference seems robust, despite evidence of non-normality. I believe the inference on the number of components may be sensitive to the hyperparameter priors, so that could be explored more.
 
 What samplers are being used? `nimbleMCMC` doesn't tell us, but we could configure the default MCMC to see:
 
