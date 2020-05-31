@@ -29,7 +29,7 @@ if(!has_compareMCMCs)
 has_rjags <- require(rjags)
 if(!has_rjags)
   warning("This Rmd file uses package rjags.  Sections using it will be skipped.")
-doComparisons <- FALSE
+doComparisons <- TRUE
 ```
 
 
@@ -649,7 +649,7 @@ Say we want to compare a variety of sampling ideas:
 
 We will use the following models:
 
-1. Same as above but without centering `Length` (just to make the blocking more interesting in this simple example)
+1. Same as above.
 2. Same as above but written with precision parameterization for `dnorm`s for JAGS.
 
 Writing MCMC configuration functions for `compareMCMCs`
@@ -679,18 +679,20 @@ nimbleMCMCdefs = list(
                         type = "AF_slice",
                         control = list(sliceAdaptFactorInterval = 20))
     mcmcConf                         # Output should be an MCMC configuration 
+  },
+  nimble_log_sigma = function(model) {
+    mcmcConf <- configureMCMC(model)
+    mcmcConf$removeSamplers('farm.sd')
+    mcmcConf$addSampler(target = 'farm.sd',
+                        type = "RW",
+                        control = list(log = TRUE))
+    mcmcConf
   }
 )
 ```
 
 Example models for `compareMCMCs`
 =====
-
-Artifically un-center length to make blocking more interesting
-```{r}
-DEconstants_uncentered <- DEconstants # Artificially un-center Length
-DEconstants_uncentered$cLength <- DeerEcervi$Length # cLength is now mis-named, but it's easier than new model code.
-```
 
 Make a version compatible with JAGS
 ```{r}
@@ -719,7 +721,7 @@ DEcode2 <- nimbleCode({
 Call `compareMCMCs` for nimble cases (centered)
 =====
 ```{r, eval = (has_compareMCMCs&doComparisons)}
-set.seet(123)
+set.seed(123)
 DEinits_vals <- DEinits1()
 mcmcResults_nimble_centered <- compareMCMCs(
   modelInfo = list(code = DEcode1, 
@@ -729,10 +731,11 @@ mcmcResults_nimble_centered <- compareMCMCs(
   ## monitors ## Use default monitors: top-level parameters
   MCMCs = c('nimble',
             'nimble_slice',
+            'nimble_log_sigma',
             'nimble_RWblock',    # Name matches nimbleMCMCdefs list name
             'nimble_AFSSblock'), # Ditto
   nimbleMCMCdefs = nimbleMCMCdefs,
-  MCMCcontrol = list(niter = 20000, burnin = 1000)
+  MCMCcontrol = list(niter = 40000, burnin = 4000)
 )
 ```
 
@@ -766,53 +769,4 @@ make_MCMC_comparison_pages(mcmcResults_centered, modelName = "Deer_Ecervi_center
 
 Results are [here](Deer_Ecervi_centered.html).
 
-Call `compareMCMCs` for nimble cases (uncentered)
-=====
-```{r, eval = (has_compareMCMCs&doComparisons)}
-set.seet(123)
-DEinits_vals <- DEinits1()
-DEinits_vals_uncentered <- DEinits_vals
-DEinits_vals_uncentered$sex.effect <- c(-8, -8)
-mcmcResults_nimble_uncentered <- compareMCMCs(
-  modelInfo = list(code = DEcode1, 
-                   data = list(Ecervi.01 = DeerEcervi$Ecervi.01),
-                   constants = DEconstants_uncentered,
-                   inits = DEinits_vals_uncentered),
-  ## monitors ## Use default monitors: top-level parameters
-  MCMCs = c('nimble',
-            'nimble_slice',
-            'nimble_RWblock',    # Name matches nimbleMCMCdefs list name
-            'nimble_AFSSblock'), # Ditto
-  nimbleMCMCdefs = nimbleMCMCdefs,
-  MCMCcontrol = list(niter = 50000, burnin = 5000)
-)
-```
-
-Call `compareMCMCs` for JAGS (uncentered)
-=====
-
-```{r, include=FALSE}
-mcmcResults_jags_uncentered <- list()
-```
-
-```{r, eval=(has_rjags&doComparisons)}
-mcmcResults_jags_uncentered <- compareMCMCs(
-  modelInfo = list(code = DEcode2, # JAGS-compatible
-                   data = list(Ecervi.01 = DeerEcervi$Ecervi.01),
-                   constants = DEconstants_uncentered, # centered
-                   inits = DEinits_vals_uncentered),
-  ## monitors ## Use default monitors: top-level parameters
-  MCMCs = c('jags'),
-  MCMCcontrol = list(niter = 50000, burnin = 5000)
-)
-```
-Combine and visualize results (uncentered)
-=====
-
-```{r, eval=doComparisons}
-mcmcResults_uncentered <- c(mcmcResults_nimble_uncentered, mcmcResults_jags_uncentered) ## These are lists of MCMCresult objects
-make_MCMC_comparison_pages(mcmcResults_uncentered, modelName = "Deer_Ecervi_uncentered")
-```
-
-Results are [here](Deer_Ecervi_uncentered.html).
 

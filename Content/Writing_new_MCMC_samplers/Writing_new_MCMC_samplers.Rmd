@@ -301,3 +301,103 @@ mcmc$run(5)
 
 Let's make an interesting sampler
 =====
+
+```{r}
+ourSampler <- nimbleFunction(
+  name = 'ourSampler',
+  contains = sampler_BASE,
+  setup = function(model, mvSaved, target, control) {
+    ## control list extraction
+    offsetNodes <- control$offsetNodes
+    if(is.null(offsetNodes)) stop("Must provide offsetNodes in control list")
+    adaptive            <- if(!is.null(control$adaptive))            control$adaptive            else TRUE
+    adaptInterval       <- if(!is.null(control$adaptInterval))       control$adaptInterval       else 20 #
+    adaptFactorExponent <- if(!is.null(control$adaptFactorExponent)) control$adaptFactorExponent else 0.8
+    scale               <- if(!is.null(control$scale))               control$scale               else 1
+    ## calculation nodes
+    calcNodes <- model$getDependencies(c(target, offsetNodes))
+    ## variables for adaptation
+    scaleOriginal <- scale
+    timesRan      <- 0
+    timesAccepted <- 0
+    timesAdapted  <- 0
+    optimalAR     <- 0.44
+    gamma1        <- 0
+  },
+  run = function() {
+    currentTargetValues <- values(model, target)
+    currentOffsetNodeValues <- values(model, offsetNodes)
+    proposalShift <- rnorm(1, mean = 0, sd = scale)
+    proposalTargetValues <- currentTargetValues + proposalShift
+    proposalOffsetNodeValues <- currentOffsetNodeValues - proposalShift
+    values(model, target) <<- proposalTargetValues
+    values(model, offsetNodes) <<- proposalOffsetNodeValues
+    logMetropolisHastingsRatio <- calculateDiff(model, calcNodes)
+    accept <- decide(logMetropolisHastingsRatio)
+    if(accept) nimCopy(from = model, to = mvSaved, row = 1, nodes = calcNodes, logProb = TRUE)
+    else     nimCopy(from = mvSaved, to = model, row = 1, nodes = calcNodes, logProb = TRUE)
+    if(adaptive)     adaptiveProcedure(accept)
+  },
+  methods = list(
+    adaptiveProcedure = function(accepted = logical()) {
+      timesRan <<- timesRan + 1
+      if(accepted)     timesAccepted <<- timesAccepted + 1
+      if(timesRan %% adaptInterval == 0) {
+        acceptanceRate <- timesAccepted / timesRan
+        timesAdapted <<- timesAdapted + 1
+        gamma1 <<- 1/((timesAdapted + 3)^adaptFactorExponent)
+        gamma2 <- 10 * gamma1
+        adaptFactor <- exp(gamma2 * (acceptanceRate - optimalAR))
+        scale <<- scale * adaptFactor
+        timesRan <<- 0
+        timesAccepted <<- 0
+      }
+    },
+    reset = function() {
+      scale <<- scaleOriginal
+      timesRan      <<- 0
+      timesAccepted <<- 0
+      timesAdapted  <<- 0
+      gamma1 <<- 0
+    }
+  )
+)
+```
+
+```{r}
+mcmcConf <- configureMCMC(DEmodel1)
+mcmcConf$addSampler(target = c('sex.effect'),
+                          type = ourSampler,
+                          control = list(offsetNodes = 'farm.effect'))
+mcmc <- buildMCMC(mcmcConf)
+```
+
+```{r}
+set.seet(123)
+DEinits_vals <- DEinits1()
+mcmcResults_ourSamples <- compareMCMCs(
+  modelInfo = list(code = DEcode1, 
+                   data = list(Ecervi.01 = DeerEcervi$Ecervi.01),
+                   constants = DEconstants, # centered
+                   inits = DEinits_vals),
+  ## monitors ## Use default monitors: top-level parameters
+  MCMCs = c('nimble',
+            'nimble_custom'),
+  nimbleMCMCdefs = list(
+    nimble_custom = function(model) {
+      mcmcConf <- configureMCMC(model)
+      mcmcConf$addSampler(target = c('sex.effect'),
+                          type = ourSampler,
+                          control = list(offsetNodes = 'farm.effect'))
+      mcmcConf                         # Output should be an MCMC configuration 
+    }
+  ),
+  MCMCcontrol = list(niter = 20000, burnin = 1000)
+)
+```
+```{r}
+getwd()
+make_MCMC_comparison_pages(mcmcResults_ourSamples, modelName = "custom_sampler_results")
+```
+
+Results are [here](custom_sampler_results.html)

@@ -3,26 +3,28 @@ title: "Strategies for improving MCMC"
 subtitle: "NIMBLE 2020 Virtual Workshop"
 author: "NIMBLE Development Team"
 output:
+  slidy_presentation: default
   html_document:
     code_folding: show
 ---
 
+<style>
+slides > slide {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+</style>
+
 ```{r setup, include=FALSE}
 library(nimble)
-
-DeerEcervi <- read.table('../examples/DeerEcervi/DeerEcervi.txt', header = TRUE)
-
-## Create presence/absence data from counts.
-DeerEcervi$Ecervi.01 <- DeerEcervi$Ecervi
-DeerEcervi$Ecervi.01[DeerEcervi$Ecervi>0] <- 1
-## Center Length for better interpretation
-DeerEcervi$cLength <- DeerEcervi$Length - mean(DeerEcervi$Length)
-## Make a factor version of Sex for plotting
-DeerEcervi$fSex <- factor(DeerEcervi$Sex)
-## Make a factor and id version of Farm
-DeerEcervi$fFarm <- factor(DeerEcervi$Farm)
-DeerEcervi$farm.ids <- as.numeric(DeerEcervi$fFarm)
-
+has_compareMCMCs <- require(compareMCMCs)
+if(!has_compareMCMCs)
+  warning("This Rmd file uses package compareMCMCs from github.  Sections using it will be skipped.")
+has_rjags <- require(rjags)
+if(!has_rjags)
+  warning("This Rmd file uses package rjags.  Sections using it will be skipped.")
+doComparisons <- TRUE
+runExercise <- FALSE
 ```
 
 # Overview
@@ -43,6 +45,156 @@ Some strategies for improving MCMC
  - Rewrite the model to reduce dependencies
  - Vectorize declarations to improve computational efficiency
  - Marginalize to remove parameters
+
+# Load the Deer E. cervi example for later:
+
+```{r load_Ecervi_example}
+source(file.path("..", "examples", "DeerEcervi", "load_DeerEcervi.R"), 
+       chdir = TRUE)
+```
+
+# Sampler choices and centering covariates or random effects  (1)
+
+Sampler choices:
+
+- Blocking can help when parameters are correlated *given other parameters*.
+    - If parameters are *marginally correlated* but *conditionally independent*, blocking will not help.
+    - This occurs if parameters are marginally correlated only because both they depend on something else.
+- Slice sampling can help mix a parameter at some computational cost.
+- Sampling standard deviations on a log scale can help, especially when there is posterior support near 0.
+- Model-specific understanding can yield good sampling strategies.
+
+# Sampler choices and centering covariates or random effects (2)
+
+Centering refers to two issues:
+
+- Centering of covariates as they are provided for the analysis.
+    - Think of $y_i = \beta_0 + \beta_1 x_i + \epsilon_i$. 
+    - If the $x_i$ are not centered, then considering $\beta_1 \rightarrow \beta_1'$ is also like adding $(\beta_1' - \beta_1) \bar{x}$ to the intercept.
+    - A standard result in linear regression is that estimates of $\beta_0$ and $\beta_1$ are correlated.
+    - Centering $x_i$ around its mean removes the posterior correlation between $\beta_0$ and $\beta_1$.
+    - In our example, we centered `Length`, but not separately for each sex.
+    
+- Centering of random effects around 0 or around a prediction from fixed effects.
+    - Not relevant for our example.
+    - Theory shows either parameterization can be better, depending on the model and data.
+    
+FIXME: Should be give some non-run illustration?
+
+# Sampler choices and centering covariates or random effects (2)
+
+Example: We'll run the examples of different samplers from the previous model **without centered `Length`**.
+
+### Artifically un-center length to make blocking more interesting
+```{r}
+DEconstants_uncentered <- DEconstants # Artificially un-center Length
+DEconstants_uncentered$cLength <- DeerEcervi$Length # cLength is now mis-named, 
+                                                    # but it's easier than new model code.
+```
+
+```{r, echo=FALSE}
+DEcode2 <- nimbleCode({
+  for(i in 1:2) {
+    length.effect[i] ~ dnorm(0, 1.0E-6) # precisions
+    sex.effect[i] ~ dnorm(0, 1.0E-6)
+  }
+  farm.sd ~ dunif(0, 20)
+  farm.precision <- 1/(farm.sd*farm.sd)
+
+  for(i in 1:num.farms) {
+    farm.effect[i] ~ dnorm(0, farm.precision) # precision
+  }
+
+  for(i in 1:num.animals) {
+    logit(disease.probability[i]) <- 
+      sex.effect[ sex[i] ] +
+      length.effect[ sex[i] ]*cLength[i] +
+      farm.effect[ farm.ids[i] ]
+    Ecervi.01[i] ~ dbern(disease.probability[i])
+  }
+})
+```
+
+### Make `nimbleMCMCdefs`
+
+```{r, eval=(has_compareMCMCs&doComparisons)}
+nimbleMCMCdefs = list(
+  nimble_RWblock = function(model) { # Input should be a model
+    mcmcConf <- configureMCMC(model)
+    mcmcConf$removeSamplers(c('sex.effect','length.effect'))
+    mcmcConf$addSampler(target = c('sex.effect[1]', 'length.effect[1]'),
+                        type = "RW_block",
+                        control = list(adaptInterval = 20, tries = 2))
+    mcmcConf$addSampler(target = c('sex.effect[2]', 'length.effect[2]'),
+                        type = "RW_block",
+                        control = list(adaptInterval = 20, tries = 2))
+    mcmcConf                         # Output should be an MCMC configuration 
+  },
+  nimble_AFSSblock = function(model) {
+    mcmcConf <- configureMCMC(model)
+    mcmcConf$removeSamplers(c('sex.effect','length.effect'))
+    mcmcConf$addSampler(target = c('sex.effect[1]', 'length.effect[1]'),
+                        type = "AF_slice",
+                        control = list(sliceAdaptFactorInterval = 20))
+    mcmcConf$addSampler(target = c('sex.effect[2]', 'length.effect[2]'),
+                        type = "AF_slice",
+                        control = list(sliceAdaptFactorInterval = 20))
+    mcmcConf                         # Output should be an MCMC configuration 
+  }
+)
+```
+
+### Call `compareMCMCs` for nimble cases (uncentered)
+
+
+```{r, eval = (has_compareMCMCs&doComparisons)}
+set.seed(123)
+DEinits_vals <- DEinits1()
+DEinits_vals_uncentered <- DEinits_vals
+DEinits_vals_uncentered$sex.effect <- c(-8, -8)
+mcmcResults_nimble_uncentered <- compareMCMCs(
+  modelInfo = list(code = DEcode1, 
+                   data = list(Ecervi.01 = DeerEcervi$Ecervi.01),
+                   constants = DEconstants_uncentered,
+                   inits = DEinits_vals_uncentered),
+  ## monitors ## Use default monitors: top-level parameters
+  MCMCs = c('nimble',
+            'nimble_slice',
+            'nimble_RWblock',    # Name matches nimbleMCMCdefs list name
+            'nimble_AFSSblock'), # Ditto
+  nimbleMCMCdefs = nimbleMCMCdefs,
+  MCMCcontrol = list(niter = 50000, burnin = 5000)
+)
+```
+
+### Call `compareMCMCs` for JAGS (uncentered)
+
+```{r, include=FALSE}
+mcmcResults_jags_uncentered <- list()
+```
+
+```{r, eval=(has_rjags&doComparisons)}
+mcmcResults_jags_uncentered <- compareMCMCs(
+  modelInfo = list(code = DEcode2, # JAGS-compatible
+                   data = list(Ecervi.01 = DeerEcervi$Ecervi.01),
+                   constants = DEconstants_uncentered, # centered
+                   inits = DEinits_vals_uncentered),
+  ## monitors ## Use default monitors: top-level parameters
+  MCMCs = c('jags'),
+  MCMCcontrol = list(niter = 50000, burnin = 5000)
+)
+```
+
+#### Combine and visualize results (uncentered)
+
+```{r, eval=doComparisons}
+mcmcResults_uncentered <- c(mcmcResults_nimble_uncentered, mcmcResults_jags_uncentered) ## These are lists of MCMCresult objects
+make_MCMC_comparison_pages(mcmcResults_uncentered, modelName = "Deer_Ecervi_uncentered")
+```
+
+#### Results 
+
+Results are [here](Deer_Ecervi_uncentered.html).
 
 # Think like a graph: reducing dependencies
 
@@ -79,7 +231,6 @@ code_light <- nimbleCode({
 ```
 
 # Think like a graph: reducing dependencies (2)
-
 
 ```{r}
 n <- 20
@@ -344,7 +495,9 @@ FIXME: decide whether to actually run MCMC on these model variations
 
 # Exercise
 
-```{r}
+FIXME: Update this to mesh with previous code
+
+```{r, eval=runExercise}
 DEconstants <- list(num.farms = 24,
                     num.animals = 826,
                     cLength = DeerEcervi$cLength,

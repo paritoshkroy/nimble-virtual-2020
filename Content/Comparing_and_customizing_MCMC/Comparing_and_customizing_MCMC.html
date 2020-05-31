@@ -944,13 +944,13 @@ slides > slide {
 </ol>
 <p>We will use the following models:</p>
 <ol style="list-style-type: decimal">
-<li>Same as above but without centering <code>Length</code> (just to make the blocking more interesting in this simple example)</li>
+<li>Same as above.</li>
 <li>Same as above but written with precision parameterization for <code>dnorm</code>s for JAGS.</li>
 </ol>
 </div>
 <div id="writing-mcmc-configuration-functions-for-comparemcmcs" class="slide section level1">
 <h1>Writing MCMC configuration functions for <code>compareMCMCs</code></h1>
-<p>There are several ways to provide custom MCMC configurations to `compareMCMCs. Here is the easiest.</p>
+<p>There are several ways to provide custom MCMC configurations to <code>compareMCMCs</code>. Here is the easiest.</p>
 <div class="sourceCode" id="cb43"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb43-1" data-line-number="1">nimbleMCMCdefs =<span class="st"> </span><span class="kw">list</span>(</a>
 <a class="sourceLine" id="cb43-2" data-line-number="2">  <span class="dt">nimble_RWblock =</span> <span class="cf">function</span>(model) { <span class="co"># Input should be a model</span></a>
 <a class="sourceLine" id="cb43-3" data-line-number="3">    mcmcConf &lt;-<span class="st"> </span><span class="kw">configureMCMC</span>(model)</a>
@@ -973,110 +973,157 @@ slides > slide {
 <a class="sourceLine" id="cb43-20" data-line-number="20">                        <span class="dt">type =</span> <span class="st">&quot;AF_slice&quot;</span>,</a>
 <a class="sourceLine" id="cb43-21" data-line-number="21">                        <span class="dt">control =</span> <span class="kw">list</span>(<span class="dt">sliceAdaptFactorInterval =</span> <span class="dv">20</span>))</a>
 <a class="sourceLine" id="cb43-22" data-line-number="22">    mcmcConf                         <span class="co"># Output should be an MCMC configuration </span></a>
-<a class="sourceLine" id="cb43-23" data-line-number="23">  }</a>
-<a class="sourceLine" id="cb43-24" data-line-number="24">)</a></code></pre></div>
+<a class="sourceLine" id="cb43-23" data-line-number="23">  },</a>
+<a class="sourceLine" id="cb43-24" data-line-number="24">  <span class="dt">nimble_log_sigma =</span> <span class="cf">function</span>(model) {</a>
+<a class="sourceLine" id="cb43-25" data-line-number="25">    mcmcConf &lt;-<span class="st"> </span><span class="kw">configureMCMC</span>(model)</a>
+<a class="sourceLine" id="cb43-26" data-line-number="26">    mcmcConf<span class="op">$</span><span class="kw">removeSamplers</span>(<span class="st">'farm.sd'</span>)</a>
+<a class="sourceLine" id="cb43-27" data-line-number="27">    mcmcConf<span class="op">$</span><span class="kw">addSampler</span>(<span class="dt">target =</span> <span class="st">'farm.sd'</span>,</a>
+<a class="sourceLine" id="cb43-28" data-line-number="28">                        <span class="dt">type =</span> <span class="st">&quot;RW&quot;</span>,</a>
+<a class="sourceLine" id="cb43-29" data-line-number="29">                        <span class="dt">control =</span> <span class="kw">list</span>(<span class="dt">log =</span> <span class="ot">TRUE</span>))</a>
+<a class="sourceLine" id="cb43-30" data-line-number="30">    mcmcConf</a>
+<a class="sourceLine" id="cb43-31" data-line-number="31">  }</a>
+<a class="sourceLine" id="cb43-32" data-line-number="32">)</a></code></pre></div>
 </div>
 <div id="example-models-for-comparemcmcs" class="slide section level1">
 <h1>Example models for <code>compareMCMCs</code></h1>
-<p>Artifically un-center length to make blocking more interesting</p>
-<div class="sourceCode" id="cb44"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb44-1" data-line-number="1">DEconstants_uncentered &lt;-<span class="st"> </span>DEconstants <span class="co"># Artificially un-center Length</span></a>
-<a class="sourceLine" id="cb44-2" data-line-number="2">DEconstants_uncentered<span class="op">$</span>cLength &lt;-<span class="st"> </span>DeerEcervi<span class="op">$</span>Length <span class="co"># cLength is now mis-named, but it's easier than new model code.</span></a></code></pre></div>
 <p>Make a version compatible with JAGS</p>
-<div class="sourceCode" id="cb45"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb45-1" data-line-number="1">DEcode2 &lt;-<span class="st"> </span><span class="kw">nimbleCode</span>({</a>
-<a class="sourceLine" id="cb45-2" data-line-number="2">  <span class="cf">for</span>(i <span class="cf">in</span> <span class="dv">1</span><span class="op">:</span><span class="dv">2</span>) {</a>
-<a class="sourceLine" id="cb45-3" data-line-number="3">    length.effect[i] <span class="op">~</span><span class="st"> </span><span class="kw">dnorm</span>(<span class="dv">0</span>, <span class="fl">1.0E-6</span>) <span class="co"># precisions</span></a>
-<a class="sourceLine" id="cb45-4" data-line-number="4">    sex.effect[i] <span class="op">~</span><span class="st"> </span><span class="kw">dnorm</span>(<span class="dv">0</span>, <span class="fl">1.0E-6</span>)</a>
-<a class="sourceLine" id="cb45-5" data-line-number="5">  }</a>
-<a class="sourceLine" id="cb45-6" data-line-number="6">  farm.sd <span class="op">~</span><span class="st"> </span><span class="kw">dunif</span>(<span class="dv">0</span>, <span class="dv">20</span>)</a>
-<a class="sourceLine" id="cb45-7" data-line-number="7">  farm.precision &lt;-<span class="st"> </span><span class="dv">1</span><span class="op">/</span>(farm.sd<span class="op">*</span>farm.sd)</a>
-<a class="sourceLine" id="cb45-8" data-line-number="8"></a>
-<a class="sourceLine" id="cb45-9" data-line-number="9">  <span class="cf">for</span>(i <span class="cf">in</span> <span class="dv">1</span><span class="op">:</span>num.farms) {</a>
-<a class="sourceLine" id="cb45-10" data-line-number="10">    farm.effect[i] <span class="op">~</span><span class="st"> </span><span class="kw">dnorm</span>(<span class="dv">0</span>, farm.precision) <span class="co"># precision</span></a>
-<a class="sourceLine" id="cb45-11" data-line-number="11">  }</a>
-<a class="sourceLine" id="cb45-12" data-line-number="12"></a>
-<a class="sourceLine" id="cb45-13" data-line-number="13">  <span class="cf">for</span>(i <span class="cf">in</span> <span class="dv">1</span><span class="op">:</span>num.animals) {</a>
-<a class="sourceLine" id="cb45-14" data-line-number="14">    <span class="kw">logit</span>(disease.probability[i]) &lt;-<span class="st"> </span></a>
-<a class="sourceLine" id="cb45-15" data-line-number="15"><span class="st">      </span>sex.effect[ sex[i] ] <span class="op">+</span></a>
-<a class="sourceLine" id="cb45-16" data-line-number="16"><span class="st">      </span>length.effect[ sex[i] ]<span class="op">*</span>cLength[i] <span class="op">+</span></a>
-<a class="sourceLine" id="cb45-17" data-line-number="17"><span class="st">      </span>farm.effect[ farm.ids[i] ]</a>
-<a class="sourceLine" id="cb45-18" data-line-number="18">    Ecervi<span class="fl">.01</span>[i] <span class="op">~</span><span class="st"> </span><span class="kw">dbern</span>(disease.probability[i])</a>
-<a class="sourceLine" id="cb45-19" data-line-number="19">  }</a>
-<a class="sourceLine" id="cb45-20" data-line-number="20">})</a></code></pre></div>
+<div class="sourceCode" id="cb44"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb44-1" data-line-number="1">DEcode2 &lt;-<span class="st"> </span><span class="kw">nimbleCode</span>({</a>
+<a class="sourceLine" id="cb44-2" data-line-number="2">  <span class="cf">for</span>(i <span class="cf">in</span> <span class="dv">1</span><span class="op">:</span><span class="dv">2</span>) {</a>
+<a class="sourceLine" id="cb44-3" data-line-number="3">    length.effect[i] <span class="op">~</span><span class="st"> </span><span class="kw">dnorm</span>(<span class="dv">0</span>, <span class="fl">1.0E-6</span>) <span class="co"># precisions</span></a>
+<a class="sourceLine" id="cb44-4" data-line-number="4">    sex.effect[i] <span class="op">~</span><span class="st"> </span><span class="kw">dnorm</span>(<span class="dv">0</span>, <span class="fl">1.0E-6</span>)</a>
+<a class="sourceLine" id="cb44-5" data-line-number="5">  }</a>
+<a class="sourceLine" id="cb44-6" data-line-number="6">  farm.sd <span class="op">~</span><span class="st"> </span><span class="kw">dunif</span>(<span class="dv">0</span>, <span class="dv">20</span>)</a>
+<a class="sourceLine" id="cb44-7" data-line-number="7">  farm.precision &lt;-<span class="st"> </span><span class="dv">1</span><span class="op">/</span>(farm.sd<span class="op">*</span>farm.sd)</a>
+<a class="sourceLine" id="cb44-8" data-line-number="8"></a>
+<a class="sourceLine" id="cb44-9" data-line-number="9">  <span class="cf">for</span>(i <span class="cf">in</span> <span class="dv">1</span><span class="op">:</span>num.farms) {</a>
+<a class="sourceLine" id="cb44-10" data-line-number="10">    farm.effect[i] <span class="op">~</span><span class="st"> </span><span class="kw">dnorm</span>(<span class="dv">0</span>, farm.precision) <span class="co"># precision</span></a>
+<a class="sourceLine" id="cb44-11" data-line-number="11">  }</a>
+<a class="sourceLine" id="cb44-12" data-line-number="12"></a>
+<a class="sourceLine" id="cb44-13" data-line-number="13">  <span class="cf">for</span>(i <span class="cf">in</span> <span class="dv">1</span><span class="op">:</span>num.animals) {</a>
+<a class="sourceLine" id="cb44-14" data-line-number="14">    <span class="kw">logit</span>(disease.probability[i]) &lt;-<span class="st"> </span></a>
+<a class="sourceLine" id="cb44-15" data-line-number="15"><span class="st">      </span>sex.effect[ sex[i] ] <span class="op">+</span></a>
+<a class="sourceLine" id="cb44-16" data-line-number="16"><span class="st">      </span>length.effect[ sex[i] ]<span class="op">*</span>cLength[i] <span class="op">+</span></a>
+<a class="sourceLine" id="cb44-17" data-line-number="17"><span class="st">      </span>farm.effect[ farm.ids[i] ]</a>
+<a class="sourceLine" id="cb44-18" data-line-number="18">    Ecervi<span class="fl">.01</span>[i] <span class="op">~</span><span class="st"> </span><span class="kw">dbern</span>(disease.probability[i])</a>
+<a class="sourceLine" id="cb44-19" data-line-number="19">  }</a>
+<a class="sourceLine" id="cb44-20" data-line-number="20">})</a></code></pre></div>
 </div>
 <div id="call-comparemcmcs-for-nimble-cases-centered" class="slide section level1">
 <h1>Call <code>compareMCMCs</code> for nimble cases (centered)</h1>
-<div class="sourceCode" id="cb46"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb46-1" data-line-number="1"><span class="kw">set.seet</span>(<span class="dv">123</span>)</a>
-<a class="sourceLine" id="cb46-2" data-line-number="2">DEinits_vals &lt;-<span class="st"> </span><span class="kw">DEinits1</span>()</a>
-<a class="sourceLine" id="cb46-3" data-line-number="3">mcmcResults_nimble_centered &lt;-<span class="st"> </span><span class="kw">compareMCMCs</span>(</a>
-<a class="sourceLine" id="cb46-4" data-line-number="4">  <span class="dt">modelInfo =</span> <span class="kw">list</span>(<span class="dt">code =</span> DEcode1, </a>
-<a class="sourceLine" id="cb46-5" data-line-number="5">                   <span class="dt">data =</span> <span class="kw">list</span>(<span class="dt">Ecervi.01 =</span> DeerEcervi<span class="op">$</span>Ecervi<span class="fl">.01</span>),</a>
-<a class="sourceLine" id="cb46-6" data-line-number="6">                   <span class="dt">constants =</span> DEconstants, <span class="co"># centered</span></a>
-<a class="sourceLine" id="cb46-7" data-line-number="7">                   <span class="dt">inits =</span> DEinits_vals),</a>
-<a class="sourceLine" id="cb46-8" data-line-number="8">  <span class="co">## monitors ## Use default monitors: top-level parameters</span></a>
-<a class="sourceLine" id="cb46-9" data-line-number="9">  <span class="dt">MCMCs =</span> <span class="kw">c</span>(<span class="st">'nimble'</span>,</a>
-<a class="sourceLine" id="cb46-10" data-line-number="10">            <span class="st">'nimble_slice'</span>,</a>
-<a class="sourceLine" id="cb46-11" data-line-number="11">            <span class="st">'nimble_RWblock'</span>,    <span class="co"># Name matches nimbleMCMCdefs list name</span></a>
-<a class="sourceLine" id="cb46-12" data-line-number="12">            <span class="st">'nimble_AFSSblock'</span>), <span class="co"># Ditto</span></a>
-<a class="sourceLine" id="cb46-13" data-line-number="13">  <span class="dt">nimbleMCMCdefs =</span> nimbleMCMCdefs,</a>
-<a class="sourceLine" id="cb46-14" data-line-number="14">  <span class="dt">MCMCcontrol =</span> <span class="kw">list</span>(<span class="dt">niter =</span> <span class="dv">20000</span>, <span class="dt">burnin =</span> <span class="dv">1000</span>)</a>
-<a class="sourceLine" id="cb46-15" data-line-number="15">)</a></code></pre></div>
+<div class="sourceCode" id="cb45"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb45-1" data-line-number="1"><span class="kw">set.seed</span>(<span class="dv">123</span>)</a>
+<a class="sourceLine" id="cb45-2" data-line-number="2">DEinits_vals &lt;-<span class="st"> </span><span class="kw">DEinits1</span>()</a>
+<a class="sourceLine" id="cb45-3" data-line-number="3">mcmcResults_nimble_centered &lt;-<span class="st"> </span><span class="kw">compareMCMCs</span>(</a>
+<a class="sourceLine" id="cb45-4" data-line-number="4">  <span class="dt">modelInfo =</span> <span class="kw">list</span>(<span class="dt">code =</span> DEcode1, </a>
+<a class="sourceLine" id="cb45-5" data-line-number="5">                   <span class="dt">data =</span> <span class="kw">list</span>(<span class="dt">Ecervi.01 =</span> DeerEcervi<span class="op">$</span>Ecervi<span class="fl">.01</span>),</a>
+<a class="sourceLine" id="cb45-6" data-line-number="6">                   <span class="dt">constants =</span> DEconstants, <span class="co"># centered</span></a>
+<a class="sourceLine" id="cb45-7" data-line-number="7">                   <span class="dt">inits =</span> DEinits_vals),</a>
+<a class="sourceLine" id="cb45-8" data-line-number="8">  <span class="co">## monitors ## Use default monitors: top-level parameters</span></a>
+<a class="sourceLine" id="cb45-9" data-line-number="9">  <span class="dt">MCMCs =</span> <span class="kw">c</span>(<span class="st">'nimble'</span>,</a>
+<a class="sourceLine" id="cb45-10" data-line-number="10">            <span class="st">'nimble_slice'</span>,</a>
+<a class="sourceLine" id="cb45-11" data-line-number="11">            <span class="st">'nimble_log_sigma'</span>,</a>
+<a class="sourceLine" id="cb45-12" data-line-number="12">            <span class="st">'nimble_RWblock'</span>,    <span class="co"># Name matches nimbleMCMCdefs list name</span></a>
+<a class="sourceLine" id="cb45-13" data-line-number="13">            <span class="st">'nimble_AFSSblock'</span>), <span class="co"># Ditto</span></a>
+<a class="sourceLine" id="cb45-14" data-line-number="14">  <span class="dt">nimbleMCMCdefs =</span> nimbleMCMCdefs,</a>
+<a class="sourceLine" id="cb45-15" data-line-number="15">  <span class="dt">MCMCcontrol =</span> <span class="kw">list</span>(<span class="dt">niter =</span> <span class="dv">40000</span>, <span class="dt">burnin =</span> <span class="dv">4000</span>)</a>
+<a class="sourceLine" id="cb45-16" data-line-number="16">)</a></code></pre></div>
+<pre><code>## building nimble model...</code></pre>
+<pre><code>## defining model...</code></pre>
+<pre><code>## building model...</code></pre>
+<pre><code>## setting data and initial values...</code></pre>
+<pre><code>## running calculate on model (any error reports that follow may simply reflect missing values in model variables) ... 
+## checking model sizes and dimensions...
+## model building finished.</code></pre>
+<pre><code>## ===== Monitors =====
+## thin = 1: sex.effect, length.effect, farm.sd
+## ===== Samplers =====
+## RW sampler (29)
+##   - sex.effect[]  (2 elements)
+##   - length.effect[]  (2 elements)
+##   - farm.sd
+##   - farm.effect[]  (24 elements)
+## ===== Monitors =====
+## thin = 1: sex.effect, length.effect, farm.sd
+## ===== Samplers =====
+## slice sampler (29)
+##   - sex.effect[]  (2 elements)
+##   - length.effect[]  (2 elements)
+##   - farm.sd
+##   - farm.effect[]  (24 elements)
+## ===== Monitors =====
+## thin = 1: sex.effect, length.effect, farm.sd
+## ===== Samplers =====
+## RW sampler (29)
+##   - sex.effect[]  (2 elements)
+##   - length.effect[]  (2 elements)
+##   - farm.sd
+##   - farm.effect[]  (24 elements)
+## ===== Monitors =====
+## thin = 1: sex.effect, length.effect, farm.sd
+## ===== Samplers =====
+## RW sampler (29)
+##   - sex.effect[]  (2 elements)
+##   - length.effect[]  (2 elements)
+##   - farm.sd
+##   - farm.effect[]  (24 elements)</code></pre>
+<pre><code>## Note: Assigning an RW_block sampler to nodes with very different scales can result in low MCMC efficiency.  If all nodes assigned to RW_block are not on a similar scale, we recommend providing an informed value for the &quot;propCov&quot; control list argument, or using the AFSS sampler instead.
+## Note: Assigning an RW_block sampler to nodes with very different scales can result in low MCMC efficiency.  If all nodes assigned to RW_block are not on a similar scale, we recommend providing an informed value for the &quot;propCov&quot; control list argument, or using the AFSS sampler instead.</code></pre>
+<pre><code>## ===== Monitors =====
+## thin = 1: sex.effect, length.effect, farm.sd
+## ===== Samplers =====
+## RW sampler (29)
+##   - sex.effect[]  (2 elements)
+##   - length.effect[]  (2 elements)
+##   - farm.sd
+##   - farm.effect[]  (24 elements)</code></pre>
+<pre><code>## compiling... this may take a minute. Use 'showCompilerOutput = TRUE' to see C++ compilation details.
+## compilation finished.
+## compiling... this may take a minute. Use 'showCompilerOutput = TRUE' to see C++ compilation details.
+## compilation finished.</code></pre>
+<pre><code>## |-------------|-------------|-------------|-------------|
+## |-------------------------------------------------------|
+## |-------------|-------------|-------------|-------------|
+## |-------------------------------------------------------|
+## |-------------|-------------|-------------|-------------|
+## |-------------------------------------------------------|
+## |-------------|-------------|-------------|-------------|
+## |-------------------------------------------------------|
+## |-------------|-------------|-------------|-------------|
+## |-------------------------------------------------------|</code></pre>
 </div>
 <div id="call-comparemcmcs-for-jags-centered" class="slide section level1">
 <h1>Call <code>compareMCMCs</code> for JAGS (centered)</h1>
 <p>We could have included <code>jags</code> in the <code>MCMCs</code> argument if the previous model was JAGS-compatible, but it wasn’t.</p>
-<div class="sourceCode" id="cb47"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb47-1" data-line-number="1">mcmcResults_jags_centered &lt;-<span class="st"> </span><span class="kw">compareMCMCs</span>(</a>
-<a class="sourceLine" id="cb47-2" data-line-number="2">  <span class="dt">modelInfo =</span> <span class="kw">list</span>(<span class="dt">code =</span> DEcode2, <span class="co"># JAGS-compatible</span></a>
-<a class="sourceLine" id="cb47-3" data-line-number="3">                   <span class="dt">data =</span> <span class="kw">list</span>(<span class="dt">Ecervi.01 =</span> DeerEcervi<span class="op">$</span>Ecervi<span class="fl">.01</span>),</a>
-<a class="sourceLine" id="cb47-4" data-line-number="4">                   <span class="dt">constants =</span> DEconstants, <span class="co"># centered</span></a>
-<a class="sourceLine" id="cb47-5" data-line-number="5">                   <span class="dt">inits =</span> DEinits_vals),</a>
-<a class="sourceLine" id="cb47-6" data-line-number="6">  <span class="co">## monitors ## Use default monitors: top-level parameters</span></a>
-<a class="sourceLine" id="cb47-7" data-line-number="7">  <span class="dt">MCMCs =</span> <span class="kw">c</span>(<span class="st">'jags'</span>),</a>
-<a class="sourceLine" id="cb47-8" data-line-number="8">  <span class="dt">MCMCcontrol =</span> <span class="kw">list</span>(<span class="dt">niter =</span> <span class="dv">20000</span>, <span class="dt">burnin =</span> <span class="dv">1000</span>)</a>
-<a class="sourceLine" id="cb47-9" data-line-number="9">)</a></code></pre></div>
+<div class="sourceCode" id="cb56"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb56-1" data-line-number="1">mcmcResults_jags_centered &lt;-<span class="st"> </span><span class="kw">compareMCMCs</span>(</a>
+<a class="sourceLine" id="cb56-2" data-line-number="2">  <span class="dt">modelInfo =</span> <span class="kw">list</span>(<span class="dt">code =</span> DEcode2, <span class="co"># JAGS-compatible</span></a>
+<a class="sourceLine" id="cb56-3" data-line-number="3">                   <span class="dt">data =</span> <span class="kw">list</span>(<span class="dt">Ecervi.01 =</span> DeerEcervi<span class="op">$</span>Ecervi<span class="fl">.01</span>),</a>
+<a class="sourceLine" id="cb56-4" data-line-number="4">                   <span class="dt">constants =</span> DEconstants, <span class="co"># centered</span></a>
+<a class="sourceLine" id="cb56-5" data-line-number="5">                   <span class="dt">inits =</span> DEinits_vals),</a>
+<a class="sourceLine" id="cb56-6" data-line-number="6">  <span class="co">## monitors ## Use default monitors: top-level parameters</span></a>
+<a class="sourceLine" id="cb56-7" data-line-number="7">  <span class="dt">MCMCs =</span> <span class="kw">c</span>(<span class="st">'jags'</span>),</a>
+<a class="sourceLine" id="cb56-8" data-line-number="8">  <span class="dt">MCMCcontrol =</span> <span class="kw">list</span>(<span class="dt">niter =</span> <span class="dv">20000</span>, <span class="dt">burnin =</span> <span class="dv">1000</span>)</a>
+<a class="sourceLine" id="cb56-9" data-line-number="9">)</a></code></pre></div>
+<pre><code>## building nimble model...</code></pre>
+<pre><code>## defining model...</code></pre>
+<pre><code>## building model...</code></pre>
+<pre><code>## setting data and initial values...</code></pre>
+<pre><code>## running calculate on model (any error reports that follow may simply reflect missing values in model variables) ... 
+## checking model sizes and dimensions...
+## model building finished.</code></pre>
+<pre><code>## Compiling model graph
+##    Resolving undeclared variables
+##    Allocating nodes
+## Graph information:
+##    Observed stochastic nodes: 826
+##    Unobserved stochastic nodes: 29
+##    Total graph size: 4915
+## 
+## Initializing model</code></pre>
 </div>
 <div id="combine-and-visualize-results-centered" class="slide section level1">
 <h1>Combine and visualize results (centered)</h1>
-<div class="sourceCode" id="cb48"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb48-1" data-line-number="1">mcmcResults_centered &lt;-<span class="st"> </span><span class="kw">c</span>(mcmcResults_nimble_centered, mcmcResults_jags_centered) <span class="co">## These are lists of MCMCresult objects</span></a>
-<a class="sourceLine" id="cb48-2" data-line-number="2"><span class="kw">make_MCMC_comparison_pages</span>(mcmcResults_centered, <span class="dt">modelName =</span> <span class="st">&quot;Deer_Ecervi_centered&quot;</span>)</a></code></pre></div>
+<div class="sourceCode" id="cb63"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb63-1" data-line-number="1">mcmcResults_centered &lt;-<span class="st"> </span><span class="kw">c</span>(mcmcResults_nimble_centered, mcmcResults_jags_centered) <span class="co">## These are lists of MCMCresult objects</span></a>
+<a class="sourceLine" id="cb63-2" data-line-number="2"><span class="kw">make_MCMC_comparison_pages</span>(mcmcResults_centered, <span class="dt">modelName =</span> <span class="st">&quot;Deer_Ecervi_centered&quot;</span>)</a></code></pre></div>
 <p>Results are <a href="Deer_Ecervi_centered.html">here</a>.</p>
-</div>
-<div id="call-comparemcmcs-for-nimble-cases-uncentered" class="slide section level1">
-<h1>Call <code>compareMCMCs</code> for nimble cases (uncentered)</h1>
-<div class="sourceCode" id="cb49"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb49-1" data-line-number="1"><span class="kw">set.seet</span>(<span class="dv">123</span>)</a>
-<a class="sourceLine" id="cb49-2" data-line-number="2">DEinits_vals &lt;-<span class="st"> </span><span class="kw">DEinits1</span>()</a>
-<a class="sourceLine" id="cb49-3" data-line-number="3">DEinits_vals_uncentered &lt;-<span class="st"> </span>DEinits_vals</a>
-<a class="sourceLine" id="cb49-4" data-line-number="4">DEinits_vals_uncentered<span class="op">$</span>sex.effect &lt;-<span class="st"> </span><span class="kw">c</span>(<span class="op">-</span><span class="dv">8</span>, <span class="dv">-8</span>)</a>
-<a class="sourceLine" id="cb49-5" data-line-number="5">mcmcResults_nimble_uncentered &lt;-<span class="st"> </span><span class="kw">compareMCMCs</span>(</a>
-<a class="sourceLine" id="cb49-6" data-line-number="6">  <span class="dt">modelInfo =</span> <span class="kw">list</span>(<span class="dt">code =</span> DEcode1, </a>
-<a class="sourceLine" id="cb49-7" data-line-number="7">                   <span class="dt">data =</span> <span class="kw">list</span>(<span class="dt">Ecervi.01 =</span> DeerEcervi<span class="op">$</span>Ecervi<span class="fl">.01</span>),</a>
-<a class="sourceLine" id="cb49-8" data-line-number="8">                   <span class="dt">constants =</span> DEconstants_uncentered,</a>
-<a class="sourceLine" id="cb49-9" data-line-number="9">                   <span class="dt">inits =</span> DEinits_vals_uncentered),</a>
-<a class="sourceLine" id="cb49-10" data-line-number="10">  <span class="co">## monitors ## Use default monitors: top-level parameters</span></a>
-<a class="sourceLine" id="cb49-11" data-line-number="11">  <span class="dt">MCMCs =</span> <span class="kw">c</span>(<span class="st">'nimble'</span>,</a>
-<a class="sourceLine" id="cb49-12" data-line-number="12">            <span class="st">'nimble_slice'</span>,</a>
-<a class="sourceLine" id="cb49-13" data-line-number="13">            <span class="st">'nimble_RWblock'</span>,    <span class="co"># Name matches nimbleMCMCdefs list name</span></a>
-<a class="sourceLine" id="cb49-14" data-line-number="14">            <span class="st">'nimble_AFSSblock'</span>), <span class="co"># Ditto</span></a>
-<a class="sourceLine" id="cb49-15" data-line-number="15">  <span class="dt">nimbleMCMCdefs =</span> nimbleMCMCdefs,</a>
-<a class="sourceLine" id="cb49-16" data-line-number="16">  <span class="dt">MCMCcontrol =</span> <span class="kw">list</span>(<span class="dt">niter =</span> <span class="dv">50000</span>, <span class="dt">burnin =</span> <span class="dv">5000</span>)</a>
-<a class="sourceLine" id="cb49-17" data-line-number="17">)</a></code></pre></div>
-</div>
-<div id="call-comparemcmcs-for-jags-uncentered" class="slide section level1">
-<h1>Call <code>compareMCMCs</code> for JAGS (uncentered)</h1>
-<div class="sourceCode" id="cb50"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb50-1" data-line-number="1">mcmcResults_jags_uncentered &lt;-<span class="st"> </span><span class="kw">compareMCMCs</span>(</a>
-<a class="sourceLine" id="cb50-2" data-line-number="2">  <span class="dt">modelInfo =</span> <span class="kw">list</span>(<span class="dt">code =</span> DEcode2, <span class="co"># JAGS-compatible</span></a>
-<a class="sourceLine" id="cb50-3" data-line-number="3">                   <span class="dt">data =</span> <span class="kw">list</span>(<span class="dt">Ecervi.01 =</span> DeerEcervi<span class="op">$</span>Ecervi<span class="fl">.01</span>),</a>
-<a class="sourceLine" id="cb50-4" data-line-number="4">                   <span class="dt">constants =</span> DEconstants_uncentered, <span class="co"># centered</span></a>
-<a class="sourceLine" id="cb50-5" data-line-number="5">                   <span class="dt">inits =</span> DEinits_vals_uncentered),</a>
-<a class="sourceLine" id="cb50-6" data-line-number="6">  <span class="co">## monitors ## Use default monitors: top-level parameters</span></a>
-<a class="sourceLine" id="cb50-7" data-line-number="7">  <span class="dt">MCMCs =</span> <span class="kw">c</span>(<span class="st">'jags'</span>),</a>
-<a class="sourceLine" id="cb50-8" data-line-number="8">  <span class="dt">MCMCcontrol =</span> <span class="kw">list</span>(<span class="dt">niter =</span> <span class="dv">50000</span>, <span class="dt">burnin =</span> <span class="dv">5000</span>)</a>
-<a class="sourceLine" id="cb50-9" data-line-number="9">)</a></code></pre></div>
-</div>
-<div id="combine-and-visualize-results-uncentered" class="slide section level1">
-<h1>Combine and visualize results (uncentered)</h1>
-<div class="sourceCode" id="cb51"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb51-1" data-line-number="1">mcmcResults_uncentered &lt;-<span class="st"> </span><span class="kw">c</span>(mcmcResults_nimble_uncentered, mcmcResults_jags_uncentered) <span class="co">## These are lists of MCMCresult objects</span></a>
-<a class="sourceLine" id="cb51-2" data-line-number="2"><span class="kw">make_MCMC_comparison_pages</span>(mcmcResults_uncentered, <span class="dt">modelName =</span> <span class="st">&quot;Deer_Ecervi_uncentered&quot;</span>)</a></code></pre></div>
-<p>Results are <a href="Deer_Ecervi_uncentered.html">here</a>.</p>
 </div>
 
   <!-- dynamically load mathjax for compatibility with self-contained -->
