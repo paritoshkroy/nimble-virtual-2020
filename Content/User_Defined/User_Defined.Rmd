@@ -24,6 +24,7 @@ Why write a user-defined distribution?
 
  - marginalize over parts of the model (e.g., latent states) for improved efficiency
  - use distributions that NIMBLE does not provide (e.g., Pareto, beta-binomial, etc.)
+ - non-standard data formats (e.g. sparse data representations)
 
 How do I write a user-defined distribution?
 
@@ -52,7 +53,6 @@ dnormmix2 <- nimbleFunction(
   })
 ```
 
-
 The simulation function is generally optional (unless it is needed for an algorithm you'll use with a model that uses your distribution). We'll include it here just for illustration.
 
 ```{r}
@@ -68,32 +68,88 @@ rnormmix2 <- nimbleFunction(
   })
 ```
 
+# `nimbleFunction` programming
+
+### Two kinds of `nimbleFunction`
+
+- Without `setup` code (shown here), `nimbleFunction` returns a basic R function that can be compiled via C++
+- With `setup` code (*two-stage evaluation*, next module), `nimbleFunction` returns an R function that generates class objects.
+
+### Type declarations
+
+- Input (argument) and output (return) types must be declared.
+- `double(0)` or `double()` is a double-precision scalar.
+- `double(1)` is a double-precision vector.
+- `integer(2)` is an integer matrix.
+- etc.
+- All model variables are represented in double precision (even if they are integers in principle), so do not use `integer` for user-defined distributions and functions (except for the `log` argument; see below).
+
+### Static typing
+
+- R uses dynamic typing.  The type of `x` can be changed by re-assignment. Everything is just an "R object."
+- `nimbleFunctions` use static typing to enable compilation.  Once `x` is created, its type cannot change.
+- "type" means dimensionality (scalr, vector, matrix, 3D array, etc.) and element type (double, integer, logical).
+- (In two-stage `nimbleFunctions`, other types can be defined as `nimbleList`s.)
+
 # User-defined distribution: requirements
 
-First we write nimbleFunctions for the density and (optionally) simulation functions. Note the naming is analogous to how probability distributions are handled in R. 
+User-defined distributions are simply `nimbleFunction`s that conform to some requirements.
 
-  - The 'd' function should have *log* as its last argument, a binary argument for whether the log density is returned or not. 
-  - The 'r' function should have *n* as its first argument but need only work for ```n=1```.
+  - Naming follows the R prefix convention of 'd' and (optionally) 'r', 'p' and 'q' functions.
+  - The 'd' function should have *x* as its first argument, with appropriate type, such as `double(1)` for a vector random variable.
+  - The 'd' function should have *log* as its last argument, a logical argument for whether the log density is returned or not.  It must have `returnType(double(0))` (scalar).
+      - When called from a model, `log` will always be `1` (`TRUE`).
+  - The (optional) 'r' function should have *n* as its first argument but need only work for ```n=1```.  Otherwise it must have the same arguments as the `d` function (except for `x` and `log`.
+  - The `returnType` of the 'r' function should be the same as the `x` type of the 'd' function. In other words, if the distribution is for a vector, then random draws should return a vector. 
 
 The User Manual also shows how you could write CDF ('p') and inverse CDF ('q') such that you could make use of truncation with your distribution.
 
 For standard usage all you need is the density ('d') and (if simulation is needed in algorithms you'll use) simulation ('r') functions.
 
-If you'd like to allow for different parameterizations for your distribution, and other advanced features you can `register` the distribution with NIMBLE via `registerDistributions()` but in many cases (including this one) that is not necessary. NIMBLE will just find the distribution automatically.
+If you'd like to allow for different parameterizations for your distribution, and other advanced features you can register the distribution with NIMBLE via `registerDistributions()` but in many cases (including this one) that is not necessary. NIMBLE will just find the distribution automatically.
 
-# Using the distribution
+# Debugging and using the distribution outside of a model
 
 In addition to using the distribution in model code, you can simply use the compiled or uncompiled distribution in R.
 
+### Uncompiled execution
+
+`dnormmix2` is just an R function. You can test and debug it in R.
+
 ```{r}
-crnormmix2 <- compileNimble(rnormmix2)
-
-set.seed(1)
-rnormmix2(1, prob = 0.1, mean = c(0, 100), sd = c(1, 1))
-
-set.seed(1)
-crnormmix2(1, prob = 0.1, mean = c(0, 100), sd = c(1, 1))
+dnormmix2(x = 1.2, prob = 0.2, mean = c(0, 2), sd = c(0.3, 0.7), log = TRUE)
+# We could use standard R debugging tools such as debug(dnormmix2) or inserting "browser()" into it.
 ```
+
+### Compiled execution
+
+Once you are satisfied that the calculations are correct, you can compile it and test that version.
+
+```{r}
+c_dnormmix2 <- compileNimble(dnormmix2)
+c_dnormmix2(x = 1.2, prob = 0.2, mean = c(0, 2), sd = c(0.3, 0.7), log = TRUE)
+```
+
+The first use of `compileNimble` in each R session invokes some one-time steps, so it will be slower than subsequent `compileNimble` calls.
+
+`nimbleFunction`s provide a way to speed up mathematical work in R.
+
+# Examples of syntax that works in `nimbleFunction`s for compilation:
+
+- Most math, including vectorized math: `x <- A %*% b`
+- Most distributions, including recycling-rule behavior: `dnorm(xVector, muScalar, sigmaVector)`
+- Explicit indexing is not required as it is in model code.
+- integer for loops: `for(i in 1:n)`
+- `if`-`then`-`else`
+- Some linear algebra: `eigen`, `svd`, `solve`, `forwardsolve`, `backsolve`, `inverse`
+- Modified versions of `numeric`, `integer`, `matrix`, `array` to create variables.
+- Modified version of `optim`.
+- Some special calls: `nimbleRcall`, `nimbleExternalCall`, others.
+
+Important difference in argument-passing:
+
+- In compiled mode, non-scalar arguments are passed by reference.
+- In uncompiled mode, they are passed by R semantics: pass-by-copy.
 
 # User-defined functions: motivation
 
@@ -121,9 +177,15 @@ There are some disadvantages to this:
     - compiling the model and any algorithms (e.g., MCMC)
     - (to a lesser degree) running the algorithm (e.g., MCMC)
 
+(By the way, NIMBLE supports vectorized declarations, so we could write the following in model code:
+```
+cov[1:n, 1:n] <- sigma2 * exp(-dists[1:n, 1:n]/rho)
+```
+However, we will instead use this as an example for writing a user-defined function.)
+
 # User-defined functions: example
 
-In NIMBLE, users can write functions that can then be directly used in model code.
+In NIMBLE, users can write functions that can be directly used in model code.
 
 Here's the covariance matrix construction.
 
@@ -136,7 +198,7 @@ expcov <- nimbleFunction(
     sigma2 <- sigma*sigma  # calculate once
     for(i in 1:n)
       for(j in 1:n)
-        result[i, j] <- sigma2*exp(-dists[i,j]/rho)
+        result[i, j] <- sigma2*exp(-dists[i,j]/rho) # vectorized alternative is given later
     return(result)
   })
 ```
@@ -146,15 +208,14 @@ expcov <- nimbleFunction(
 assign('expcov', expcov, .GlobalEnv)
 ```
 
-
 The requirements of the nimbleFunction (as with user-defined distributions) are:
 
- - type and dimension information for inputs
- - type and dimension information for the output
+ - declared types (dimension and element types) for inputs
+ - declared return (output) type
  - the `run` function is the function that executes the calculation of interest
  - only syntax we can compile is allowed 
 
-# Using the user-defined function
+# Using the user-defined function in a model
 
 This function is then used in model code to determine the covariance matrix for the Gaussian spatial process at a finite set of locations (in this case the centroids of the spatial regions). 
 
@@ -201,6 +262,40 @@ deps
 model$simulate(deps)  # may be a bit slow uncompiled given the nested looping
 range(model$x)
 ```
+
+# Debugging user-defined functions and distributions in a model
+
+Like the user-defined distribution, the user-defined function `expcov` can be tested and compiled as a `nimbleFunction` outside of a model.  Here we show how to debug it when used in a model.
+
+### Debugging from an uncompiled model
+
+Models can also be used either uncompiled or compiled. In uncompiled execution, R debugging tools can be used.
+
+Here is an example.  Suppose the model's total log probability is `-Inf` or `NaN`.  This occurs when something is wrong.  Sometimes initial values are invalid.  Sometimes a user-defined function has a bug.  Sometimes model logic is wrong. To investigate, we can step into `expcov` calculations as it is used from the model:
+
+```{r}
+# Verify node name
+covNode <- model$expandNodeNames("cov")
+covNode
+```
+
+When you run on your machine (not when we generate these slides), include
+
+```{r, eval=FALSE}
+debug(expcov)
+```
+
+Then the model calculation will bring you to a debugging browser just as in R, because this is R (uncompiled) execution.
+
+```{r}
+model$calculate("cov[1:134, 1:134]")
+```
+
+If there is a bug in `expcov`, we could find it by stepping through in R's debugging browser.
+
+### Debugging from an MCMC
+
+MCMCs can also be run and debugged uncompiled.
 
 # Vectorization within the function?
 
