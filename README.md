@@ -11,7 +11,7 @@ To prepare for the workshop:
 
 All materials for the workshop are here [UNDER CONSTRUCTION]. If you're familiar with Git/Github, you already know how to get all the materials on your computer. If you're not, simply click [here](https://github.com/nimble-training/nimble-virtual-2020/archive/master.zip).
 
-There is some overview information [here](https://htmlpreview.github.io/?https://github.com/nimble-training/nimble-virtual-2020/blob/master/overview_slides.html).
+There is some overview information [here](https://htmlpreview.github.io/?https://github.com/nimble-training/nimble-virtual-2020/blob/master/overview.html).
 
 Location: Zoom (URL TBD)
 Time: 9 am - 2 pm California time (noon - 5 pm EDT)
@@ -72,7 +72,7 @@ IMPORTANT: for those of you using R 4.0 under Windows, you MUST use version 0.9.
 Sometimes we make an update or new feature available on a github branch before it is released.  In the event a need arises to install from a branch, you can do so as follows (for branch "devel"):
 
 ```
-library(devtools)
+library(remotes)
 install_github("nimble-dev/nimble", ref = "devel", subdir = "packages/nimble")
 ```
 
@@ -87,6 +87,6 @@ install.packages(c("mcmcplots", "CARBayesdata", "sp", "spdep", "classInt"))
 `compareMCMCs` is a package in development that is not yet on CRAN:
 
 ```
-library(devtools)
+library(remotes)
 install_github("nimble-dev/compareMCMCs", subdir = "compareMCMCs")
 ```

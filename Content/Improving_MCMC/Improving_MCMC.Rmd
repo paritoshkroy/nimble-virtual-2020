@@ -39,19 +39,18 @@ runExercise <- FALSE
 Some strategies for improving MCMC
 
  - Customize sampler choices. E.g.,
-    - Try blocking correlated parameters.
-    - Try sampling standard deviations on a log scale.
-    - Try slice samplers instead of Metropolis-Hastings.
-    - Try multiple samplers for slow-mixing parameters.
+    - Try sampling standard deviations on a log scale [already seen].
+    - Try slice samplers instead of Metropolis-Hastings [already seen].
+    - Try blocking correlated parameters [already seen; more here]
+    - Try multiple samplers for slow-mixing parameters [not shown].
  - Reparameterize
-    - Center covariates
+    - Center covariates [already seen]
     - Centered versus non-centered random effects
-    - Rotated coordinates to reduce posterior correlation
- - (Advanced; tomorrow) Write new samplers that take advantage of particular model structures
- 
- - Rewrite the model to reduce dependencies
+    - Rotated coordinates to reduce posterior correlation [already seen; more here]
+ - (Advanced) Write new samplers that take advantage of particular model structures [tomorrow]
+ - Rewrite the model to reduce dependencies 
  - Vectorize declarations to improve computational efficiency
- - Marginalize to remove parameters
+ - Marginalize to remove parameters 
 
 # Load the Deer E. cervi example for later:
 
@@ -66,7 +65,7 @@ Sampler choices:
 
 - Blocking can help when parameters are correlated *given other parameters*.
     - If parameters are *marginally correlated* but *conditionally independent*, blocking will not help.
-    - This occurs if parameters are marginally correlated only because both they depend on something else.
+    - This occurs if parameters are marginally correlated only because they both depend on something else.
 - Slice sampling can help mix a parameter at some computational cost.
 - Sampling standard deviations on a log scale can help, especially when there is posterior support near 0.
 - Model-specific understanding can yield good sampling strategies.
@@ -82,36 +81,68 @@ Centering refers to two issues:
     - Centering $x_i$ around its mean removes the posterior correlation between $\beta_0$ and $\beta_1$.
     - In our example, we centered `Length`, but not separately for each sex.
     
-- Centering of random effects around 0 or around a prediction from fixed effects.
-    - Not relevant for our example.
-    - Theory shows either parameterization can be better, depending on the model and data.
+- Random effects with a mean of zero (non-centered) versus centered around a mean.
+    - E.g., `farm.effect ~ N(0, sd)` vs. `farm.effect ~ N(mu, sd)`.
+    - Theory shows either parameterization can be better, depending on the model and data, but with reasonable amount of data, centered is often better.
     
-FIXME: Should be give some non-run illustration?
+# Back to the E. cervi MCMC
 
-# Sampler choices and centering covariates or random effects (2)
+Let's take a deeper look at the mixing of our basic MCMC for the E. cervi example with the 'length' variable centered.
 
-Example: We'll run the examples of different samplers from the previous model **without centered `Length`**.
 
-### Artifically un-center length to make blocking more interesting
-```{r}
-DEconstants_uncentered <- DEconstants # Artificially un-center Length
-DEconstants_uncentered$cLength <- DeerEcervi$Length # cLength is now mis-named, 
-                                                    # but it's easier than new model code.
+```{r, fig.cap='', fig.width=12, fig.height=5}
+set.seed(123)
+model <- nimbleModel(DEcode1 , constants = DEconstants, inits = DEinits_vals, data = DEdata)
+cmodel <- compileNimble(model)
+mcmcConf <- configureMCMC(model)
+mcmcConf$addMonitors('farm.effect')
+mcmc <- buildMCMC(mcmcConf)
+cmcmc <- compileNimble(mcmc, project = model)
+system.time(samplesOrig <- runMCMC(cmcmc, niter = 5000))
+
+# change to c(3,5) in live demo
+par(mfrow = c(1,5))
+ts.plot(samplesOrig[ , 'farm.sd'], main = 'farm sd')
+ts.plot(samplesOrig[ , 'farm.effect[1]'], main = 'farm effect 1')
+ts.plot(samplesOrig[ , 'sex.effect[1]'], main = 'sex effect 1 (intercept 1)')
+ts.plot(samplesOrig[ , 'sex.effect[2]'], main = 'sex effect 2 (intercept 2)')
+ts.plot(samplesOrig[ , 'length.effect[1]'], main = 'length effect 1 (slope 1)')
 ```
 
-```{r, echo=FALSE}
-DEcode2 <- nimbleCode({
+What's not mixing? The intercepts (sex.effects) go up and down together and the farm effects inversely to them.
+
+Why?
+
+```
+  logit(disease.probability[i]) <- 
+      sex.effect[ sex[i] ] +
+      length.effect[ sex[i] ]*cLength[i] +
+      farm.effect[ farm.ids[i] ]
+``` 
+
+# Solution: center the random effects
+
+Solution: center the random effects
+Difficulty: there are two intercepts!
+Secondary solution: have second intercept be an offset for sex 2 only
+
+```{r, fig.cap='', fig.width=12, fig.height=5}
+DEcode3 <- nimbleCode({
+  sex.effect[2] ~ dnorm(0, sd = 1000)     # offset for sex 2
+  sex.effect[1] <- 0                      # replaced by 'mu'
   for(i in 1:2) {
-    length.effect[i] ~ dnorm(0, 1.0E-6) # precisions
-    sex.effect[i] ~ dnorm(0, 1.0E-6)
+    # Priors for ntercepts and length coefficients for sex = 1,2
+    length.effect[i] ~ dnorm(0, sd = 1000)
   }
+  
+  # Priors for farm random effects and their standard deviation.
   farm.sd ~ dunif(0, 20)
-  farm.precision <- 1/(farm.sd*farm.sd)
-
   for(i in 1:num.farms) {
-    farm.effect[i] ~ dnorm(0, farm.precision) # precision
+    farm.effect[i] ~ dnorm(mu, sd = farm.sd)  # centered random effects
   }
-
+  mu ~ dnorm(0, sd = 100)
+  
+  # logit link and Bernoulli data probabilities
   for(i in 1:num.animals) {
     logit(disease.probability[i]) <- 
       sex.effect[ sex[i] ] +
@@ -120,7 +151,102 @@ DEcode2 <- nimbleCode({
     Ecervi.01[i] ~ dbern(disease.probability[i])
   }
 })
+
+set.seed(123)
+model3 = nimbleModel(DEcode3 , constants = DEconstants, inits = c(DEinits_vals, mu = 0), data = DEdata)
 ```
+
+```{r}
+cmodel3 <- compileNimble(model3)
+mcmcConf3 <- configureMCMC(model3)
+mcmcConf3$addMonitors('farm.effect')
+mcmc3 <- buildMCMC(mcmcConf3)
+cmcmc3 <- compileNimble(mcmc3, project = model3)
+system.time(samplesCtrRE <- runMCMC(cmcmc3, niter = 5000))
+
+par(mfrow = c(1,5))
+ts.plot(samplesCtrRE[ , 'farm.sd'], main = 'farm sd')
+ts.plot(samplesCtrRE[ , 'farm.effect[1]'], main = 'farm effect 1')
+ts.plot(samplesCtrRE[ , 'mu'], main = 'intercept (random effect mean)')
+ts.plot(samplesCtrRE[ , 'sex.effect[2]'], main = 'sex effect 2 (intercept 2)')
+ts.plot(samplesCtrRE[ , 'length.effect[1]'], main = 'length effect 1 (slope 1)')
+```
+
+So that works pretty well.
+
+# Back to E. cervi, but without centering the covariate
+
+Let's consider the original model, but without centering the covariate.
+
+```{r}
+DEconstants_uncentered <- DEconstants # Artificially un-center Length
+DEconstants_uncentered$cLength <- DeerEcervi$Length # cLength is now mis-named, 
+                                                    # but it's easier than new model code.
+
+set.seed(123)
+DEinits_vals_uncentered <- DEinits_vals
+DEinits_vals_uncentered$sex.effect <- c(-8, -8)
+
+model4 = nimbleModel(DEcode1, constants = DEconstants_uncentered, inits = DEinits_vals_uncentered, data = DEdata)
+```
+
+```{r, fig.cap='', fig.width=12, fig.height=5}
+cmodel4 <- compileNimble(model4)
+mcmcConf4 <- configureMCMC(model4)
+mcmcConf4$addMonitors('farm.effect')
+mcmc4 <- buildMCMC(mcmcConf4)
+cmcmc4 <- compileNimble(mcmc4, project = model4)
+system.time(samplesOrigUnc <- runMCMC(cmcmc4, niter = 5000))
+
+par(mfrow = c(1,5))
+ts.plot(samplesOrigUnc[ , 'farm.sd'], main = 'farm sd')
+ts.plot(samplesOrigUnc[ , 'farm.effect[1]'], main = 'farm effect 1')
+ts.plot(samplesOrigUnc[ , 'sex.effect[1]'], main = 'sex effect 1 (intercept 1)')
+ts.plot(samplesOrigUnc[ , 'sex.effect[2]'], main = 'sex effect 2 (intercept 2)')
+ts.plot(samplesOrigUnc[ , 'length.effect[1]'], main = 'length effect 1 (slope 1)')
+```
+
+So here the main issue is the correlation of the {intercept,slope} pairs.
+
+# Blocking
+
+The standard answer for that problem is to block the parameters. 
+
+After some trial and error, it turns out that modifying the defaults for the block sampler helps a huge amount and turns it from performing poorly to performing very well. One aspect of this is getting the relative scales of the parameters about right.
+
+```{r, fig.cap='', fig.width=12, fig.height=5}
+model5 = nimbleModel(DEcode1, constants = DEconstants_uncentered, inits = DEinits_vals_uncentered, data = DEdata)
+cmodel5 <- compileNimble(model5)
+mcmcConf5 <- configureMCMC(model5)
+mcmcConf5$removeSamplers(c('sex.effect','length.effect'))
+
+# Add RW_block samplers, modifying adaptation behavior.
+mcmcConf5$addSampler(target = c('sex.effect[1]', 'length.effect[1]'),
+                 type = "RW_block",
+                 control = list(propCov = diag(c(.1, .01)), adaptInterval = 20, 
+                                adaptFactorExponent = 0.25))
+mcmcConf5$addSampler(target = c('sex.effect[2]', 'length.effect[2]'),
+                 type = "RW_block",
+                 control = list(propCov = diag(c(.1, .01)), adaptInterval = 20, 
+                                adaptFactorExponent = 0.25))
+mcmcConf5$addMonitors('farm.effect')
+mcmc5 <- buildMCMC(mcmcConf5)
+cmcmc5 <- compileNimble(mcmc5, project = model5)
+system.time(samplesBlock <- runMCMC(cmcmc5, niter = 5000))
+
+par(mfrow = c(1,5))
+ts.plot(samplesBlock[ , 'farm.sd'], main = 'farm sd')
+ts.plot(samplesBlock[ , 'farm.effect[1]'], main = 'farm effect 1')
+ts.plot(samplesBlock[ , 'sex.effect[1]'], main = 'sex effect 1, intercept 1')
+ts.plot(samplesBlock[ , 'sex.effect[2]'], main = 'sex effect 2 (intercept 2)')
+ts.plot(samplesBlock[ , 'length.effect[1]'], main = 'length effect 1 (slope 1)')
+```
+
+So the blocking helps a lot, though the farm effects show some oscillations. (A longer run looks fine.)
+
+# Full comparison, accounting for sampling time
+
+We'll compare the uncentered approaches as in the previous module, using `compareMCMCs`. Without some additional work, we can't compare to the centered random effects approach because the parameters are not identical (note we added `mu`).
 
 ### Make `nimbleMCMCdefs`
 
@@ -131,10 +257,12 @@ nimbleMCMCdefs = list(
     mcmcConf$removeSamplers(c('sex.effect','length.effect'))
     mcmcConf$addSampler(target = c('sex.effect[1]', 'length.effect[1]'),
                         type = "RW_block",
-                        control = list(adaptInterval = 20, tries = 2))
+                        control = list(propCov = diag(c(.1, .01)), adaptInterval = 20,
+                                       adaptFactorExponent = 0.25))
     mcmcConf$addSampler(target = c('sex.effect[2]', 'length.effect[2]'),
                         type = "RW_block",
-                        control = list(adaptInterval = 20, tries = 2))
+                        control = list(propCov = diag(c(.1, .01)), adaptInterval = 20, 
+                                       adaptFactorExponent = 0.25))
     mcmcConf                         # Output should be an MCMC configuration 
   },
   nimble_AFSSblock = function(model) {
@@ -151,17 +279,23 @@ nimbleMCMCdefs = list(
 )
 ```
 
-### Call `compareMCMCs` for nimble cases (uncentered)
-
+### Call `compareMCMCs` for nimble cases (centered and uncentered)
 
 ```{r, eval = (has_compareMCMCs&doComparisons)}
-set.seed(123)
-DEinits_vals <- DEinits1()
-DEinits_vals_uncentered <- DEinits_vals
-DEinits_vals_uncentered$sex.effect <- c(-8, -8)
+mcmcResults_nimble_centered_reparam <- compareMCMCs(
+  modelInfo = list(code = DEcode3, 
+                   data = DEdata,
+                   constants = DEconstants,
+                   inits = c(DEinits_vals, list(mu = 0))),
+  ## monitors ## Use default monitors: top-level parameters
+  MCMCs = c('nimble',
+            'nimble_slice'),
+  MCMCcontrol = list(niter = 50000, burnin = 5000)
+)
+
 mcmcResults_nimble_uncentered <- compareMCMCs(
   modelInfo = list(code = DEcode1, 
-                   data = list(Ecervi.01 = DeerEcervi$Ecervi.01),
+                   data = DEdata,
                    constants = DEconstants_uncentered,
                    inits = DEinits_vals_uncentered),
   ## monitors ## Use default monitors: top-level parameters
@@ -192,16 +326,20 @@ mcmcResults_jags_uncentered <- compareMCMCs(
 )
 ```
 
-#### Combine and visualize results (uncentered)
+### Combine and visualize results 
 
 ```{r, eval=doComparisons}
-mcmcResults_uncentered <- c(mcmcResults_nimble_uncentered, mcmcResults_jags_uncentered) ## These are lists of MCMCresult objects
-make_MCMC_comparison_pages(mcmcResults_uncentered, modelName = "Deer_Ecervi_uncentered")
+mcmcResults_uncentered <- c(mcmcResults_nimble_uncentered,
+                 mcmcResults_jags_uncentered) ## These are lists of MCMCresult objects
+make_MCMC_comparison_pages(mcmcResults_uncentered, modelName = "Deer_Ecervi_uncentered_results")
+
+make_MCMC_comparison_pages(mcmcResults_nimble_centered_reparam, 
+                           modelName = "Deer_Ecervi_centered_reparam_results")
 ```
 
-#### Results 
+### Results 
 
-Results are [here](Deer_Ecervi_uncentered.html).
+Results are [here](Deer_Ecervi_uncentered_results.html).
 
 # Think like a graph: reducing dependencies
 
@@ -498,7 +636,6 @@ cModel <- compileNimble(model)
 cModel$calculate('farm.effect')
 ```
 
-FIXME: decide whether to actually run MCMC on these model variations
 
 # Exercise
 
