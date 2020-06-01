@@ -41,9 +41,37 @@ DEconstants <- list(num.farms = 24,
                     sex = DeerEcervi$Sex,
                     farm.ids = DeerEcervi$farm.ids)
 
+DEdata <- list(Ecervi.01 = DeerEcervi$Ecervi.01)
+
 DEinits1 <- function() {
   list(sex.effect = c(0, 0), 
        length.effect = c(0, 0),
        farm.sd = 1,
        farm.effect = rnorm(24, 0, 1) )       
 }
+
+set.seed(123)
+DEinits_vals <- DEinits1()
+
+## JAGS-compatible version
+DEcode2 <- nimbleCode({
+  for(i in 1:2) {
+    length.effect[i] ~ dnorm(0, 1.0E-6) # precisions
+    sex.effect[i] ~ dnorm(0, 1.0E-6)
+  }
+  farm.sd ~ dunif(0, 20)
+  farm.precision <- 1/(farm.sd*farm.sd)
+  
+  for(i in 1:num.farms) {
+    farm.effect[i] ~ dnorm(0, farm.precision) # precision
+  }
+  
+  for(i in 1:num.animals) {
+    logit(disease.probability[i]) <- 
+      sex.effect[ sex[i] ] +
+      length.effect[ sex[i] ]*cLength[i] +
+      farm.effect[ farm.ids[i] ]
+    Ecervi.01[i] ~ dbern(disease.probability[i])
+  }
+})
+

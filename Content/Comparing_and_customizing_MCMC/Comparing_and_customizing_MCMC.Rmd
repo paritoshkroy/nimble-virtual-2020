@@ -731,8 +731,8 @@ mcmcResults_nimble_centered <- compareMCMCs(
   ## monitors ## Use default monitors: top-level parameters
   MCMCs = c('nimble',
             'nimble_slice',
-            'nimble_log_sigma',
-            'nimble_RWblock',    # Name matches nimbleMCMCdefs list name
+            'nimble_log_sigma',  # Name matches nimbleMCMCdefs list name
+            'nimble_RWblock',    # Ditto
             'nimble_AFSSblock'), # Ditto
   nimbleMCMCdefs = nimbleMCMCdefs,
   MCMCcontrol = list(niter = 40000, burnin = 4000)

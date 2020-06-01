@@ -87,6 +87,6 @@ install.packages(c("mcmcplots", "CARBayesdata", "sp", "spdep", "classInt"))
 `compareMCMCs` is a package in development that is not yet on CRAN:
 
 ```
-library(devtools)
+library(remotes)
 install_github("nimble-dev/compareMCMCs", subdir = "compareMCMCs")
 ```

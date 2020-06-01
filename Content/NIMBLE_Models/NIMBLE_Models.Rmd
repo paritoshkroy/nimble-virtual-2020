@@ -16,41 +16,8 @@ slides > slide {
 
 ```{r setup, include=FALSE}
 library(nimble)
-DeerEcervi <- read.table('../examples/DeerEcervi/DeerEcervi.txt', header = TRUE)
-
-## Create presence/absence data from counts.
-DeerEcervi$Ecervi.01 <- DeerEcervi$Ecervi
-DeerEcervi$Ecervi.01[DeerEcervi$Ecervi>0] <- 1
-## Center Length for better interpretation
-DeerEcervi$cLength <- DeerEcervi$Length - mean(DeerEcervi$Length)
-## Make a factor version of Sex for plotting
-DeerEcervi$fSex <- factor(DeerEcervi$Sex)
-## Make a factor and id version of Farm
-DeerEcervi$fFarm <- factor(DeerEcervi$Farm)
-DeerEcervi$farm.ids <- as.numeric(DeerEcervi$fFarm)
-
-DEcode1 <- nimbleCode({
-  for(i in 1:2) {
-    # Priors for ntercepts and length coefficients for sex = 1,2
-    sex.effect[i] ~ dnorm(0, sd = 1000)
-    length.effect[i] ~ dnorm(0, sd = 1000)
-  }
-  
-  # Priors for farm random effects and their standard deviation.
-  farm.sd ~ dunif(0, 20)
-  for(i in 1:num.farms) {
-    farm.effect[i] ~ dnorm(0, sd = farm.sd)
-  }
-  
-  # logit link and Bernoulli data probabilities
-  for(i in 1:num.animals) {
-    logit(disease.probability[i]) <- 
-      sex.effect[ sex[i] ] +
-      length.effect[ sex[i] ]*cLength[i] +
-      farm.effect[ farm.ids[i] ]
-    Ecervi.01[i] ~ dbern(disease.probability[i])
-  }
-})
+load(file.path("..", "examples", "DeerEcervi", "load_DeerEcervi.R"), 
+     chdir = TRUE)
 ```
 
 # Overview
