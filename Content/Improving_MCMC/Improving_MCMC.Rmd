@@ -286,10 +286,10 @@ mcmcResults_nimble_centered_reparam <- compareMCMCs(
   modelInfo = list(code = DEcode3, 
                    data = DEdata,
                    constants = DEconstants,
-                   inits = c(DEinits_vals, list(mu = 0)),
+                   inits = c(DEinits_vals, list(mu = 0))),
   ## monitors ## Use default monitors: top-level parameters
   MCMCs = c('nimble',
-            'nimble_slice',
+            'nimble_slice'),
   MCMCcontrol = list(niter = 50000, burnin = 5000)
 )
 
@@ -333,7 +333,8 @@ mcmcResults_uncentered <- c(mcmcResults_nimble_uncentered,
                  mcmcResults_jags_uncentered) ## These are lists of MCMCresult objects
 make_MCMC_comparison_pages(mcmcResults_uncentered, modelName = "Deer_Ecervi_uncentered_results")
 
-make_MCMC_comparison_pages(mcmcResults_centered_reparam, modelName = "Deer_Ecervi_centered_reparam_results")
+make_MCMC_comparison_pages(mcmcResults_nimble_centered_reparam, 
+                           modelName = "Deer_Ecervi_centered_reparam_results")
 ```
 
 ### Results 
